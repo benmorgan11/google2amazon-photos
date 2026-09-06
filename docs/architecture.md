@@ -111,4 +111,11 @@ export-level JSON classification is not implemented.
 
 The analyzer adds no new matching or parsing heuristics. It does not classify
 album metadata, resolve metadata precedence, hash content, alter metadata, or
-prepare output copies, and it has no CLI presentation in this milestone.
+prepare output copies.
+
+The CLI exposes the analysis through a plain-text `analyze` command. Presentation
+and exit-code decisions remain in the CLI layer: it prints summary counts and
+details only for invalid, unmatched, and ambiguous media. Those attention cases
+produce exit code `2`; unused JSON and `Other` files remain reportable counts and
+do not affect success. Argument and operational failures produce exit code `1`.
+The command creates no output files or saved reports.
