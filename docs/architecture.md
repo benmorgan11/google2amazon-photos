@@ -1,0 +1,45 @@
+# Architecture v0.1
+
+## Decision
+
+Build a local .NET CLI that prepares exported media for user-managed import into Amazon Photos.
+
+The first input format is an already-extracted Google Takeout directory. Archive extraction and automated uploads are outside the initial scope.
+
+## Planned pipeline
+
+Discover files -> match sidecars -> analyze metadata -> produce a dry-run plan -> prepare output copies -> verify and report.
+
+Each stage will be implemented separately.
+
+## Boundaries
+
+- CLI: arguments, user-facing output, and exit codes.
+- Core: discovery, matching, metadata decisions, and verification.
+- Tests: synthetic inputs and isolated temporary directories.
+
+Add external-tool integrations only when a concrete feature requires them.
+
+## Safety invariants
+
+- Never modify, rename, or delete source files.
+- Never overwrite an existing output silently.
+- Do not re-encode photos or videos.
+- Preserve the original source alongside any metadata-adjusted copy.
+- Metadata changes can change whole-file hashes; unchanged hashes alone cannot verify quality for adjusted copies.
+- Record metadata provenance and conflicts.
+- Do not invent missing dates, timezones, or locations.
+- Treat input filenames and sidecar contents as untrusted data.
+- Keep personal media and reports out of Git.
+
+## Validation still required
+
+Determine Amazon Photos behavior for capture dates, timezones, GPS, video metadata, and supported formats using a small controlled sample.
+
+Choose metadata precedence and writing tools only after testing representative cases.
+
+## First feature
+
+Read-only recursive inventory of an extracted directory. Return relative paths and byte lengths in deterministic order.
+
+No sidecar parsing, metadata edits, copying, hashing, or uploads.

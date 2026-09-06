@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PhotoMigration.Cli/PhotoMigration.Cli.csproj" />
+    <Project Path="src/PhotoMigration.Core/PhotoMigration.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PhotoMigration.Core.Tests/PhotoMigration.Core.Tests.csproj" />
+  </Folder>
+</Solution>
