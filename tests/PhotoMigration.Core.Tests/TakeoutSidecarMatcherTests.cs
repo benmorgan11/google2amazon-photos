@@ -26,6 +26,28 @@ public sealed class TakeoutSidecarMatcherTests
     }
 
     [Theory]
+    [InlineData("README", "README.json", SidecarMatchRule.LegacyJson)]
+    [InlineData(
+        ".hidden",
+        ".hidden.supplemental-metadata.json",
+        SidecarMatchRule.SupplementalMetadataJson)]
+    public void Match_ChecksExactRulesWithoutRequiringANormalExtension(
+        string mediaPath,
+        string sidecarPath,
+        SidecarMatchRule expectedRule)
+    {
+        var media = Entry(mediaPath);
+        var sidecar = Entry(sidecarPath);
+
+        var result = Assert.IsType<MatchedMediaSidecarResult>(
+            Assert.Single(TakeoutSidecarMatcher.Match([media], [sidecar])));
+
+        Assert.Same(media, result.MediaEntry);
+        Assert.Same(sidecar, result.SidecarEntry);
+        Assert.Equal(expectedRule, result.Rule);
+    }
+
+    [Theory]
     [InlineData(
         "photo(1).jpg",
         "photo.jpg.supplemental-metadata(1).json")]
@@ -47,6 +69,133 @@ public sealed class TakeoutSidecarMatcherTests
 
         Assert.Same(sidecar, result.SidecarEntry);
         Assert.Equal(SidecarMatchRule.DuplicateNumber, result.Rule);
+    }
+
+    [Theory]
+    [InlineData(
+        "Peanut Butter Balls.jpg",
+        "Peanut Butter Balls.supplemental-metadata.json")]
+    [InlineData(
+        "vacation.final.jpg",
+        "vacation.final.supplemental-metadata.json")]
+    public void Match_SupportsUniqueExtensionOmittedSidecars(
+        string mediaPath,
+        string sidecarPath)
+    {
+        var media = Entry(mediaPath);
+        var sidecar = Entry(sidecarPath);
+
+        var result = Assert.IsType<MatchedMediaSidecarResult>(
+            Assert.Single(TakeoutSidecarMatcher.Match([media], [sidecar])));
+
+        Assert.Same(sidecar, result.SidecarEntry);
+        Assert.Equal(SidecarMatchRule.ExtensionOmitted, result.Rule);
+    }
+
+    [Fact]
+    public void Match_ReportsDifferentMediaExtensionsClaimingOneSidecarAsAmbiguous()
+    {
+        var jpg = Entry("photo.jpg");
+        var png = Entry("photo.png");
+        var sidecar = Entry("photo.supplemental-metadata.json");
+
+        var results = TakeoutSidecarMatcher.Match([png, jpg], [sidecar]);
+
+        Assert.All(results, result => Assert.IsType<AmbiguousMediaSidecarResult>(result));
+        Assert.Equal(
+            ["photo.jpg", "photo.png"],
+            results.Select(result => result.MediaEntry.RelativePath));
+        Assert.All(
+            results.Cast<AmbiguousMediaSidecarResult>(),
+            result =>
+            {
+                var candidate = Assert.Single(result.Candidates);
+                Assert.Same(sidecar, candidate.SidecarEntry);
+                Assert.Equal(SidecarMatchRule.ExtensionOmitted, candidate.Rule);
+            });
+    }
+
+    [Fact]
+    public void Match_KeepsExtensionOmittedMatchesWithinTheSameLogicalDirectory()
+    {
+        var yearMedia = Entry("2024/photo.jpg");
+        var albumMedia = Entry("Album/photo.jpg");
+        var yearSidecar = Entry("2024/photo.supplemental-metadata.json");
+
+        var results = TakeoutSidecarMatcher.Match(
+            [albumMedia, yearMedia],
+            [yearSidecar]);
+
+        var yearResult = Assert.IsType<MatchedMediaSidecarResult>(results[0]);
+        Assert.Same(yearMedia, yearResult.MediaEntry);
+        Assert.Same(yearSidecar, yearResult.SidecarEntry);
+        Assert.IsType<UnmatchedMediaResult>(results[1]);
+        Assert.Same(albumMedia, results[1].MediaEntry);
+    }
+
+    [Fact]
+    public void Match_LeavesCaseOnlyExtensionOmittedDifferencesUnmatched()
+    {
+        var media = Entry("photo.jpg");
+        var sidecar = Entry("Photo.supplemental-metadata.json");
+
+        var result = Assert.IsType<UnmatchedMediaResult>(
+            Assert.Single(TakeoutSidecarMatcher.Match([media], [sidecar])));
+
+        Assert.Same(media, result.MediaEntry);
+    }
+
+    [Fact]
+    public void Match_ReportsAnExactAndExtensionOmittedCandidateAsAmbiguous()
+    {
+        var media = Entry("photo.jpg");
+        var exact = Entry("photo.jpg.json");
+        var extensionOmitted = Entry("photo.supplemental-metadata.json");
+
+        var result = Assert.IsType<AmbiguousMediaSidecarResult>(
+            Assert.Single(TakeoutSidecarMatcher.Match(
+                [media],
+                [extensionOmitted, exact])));
+
+        Assert.Equal(2, result.Candidates.Count);
+        Assert.Contains(
+            result.Candidates,
+            candidate => ReferenceEquals(candidate.SidecarEntry, exact)
+                         && candidate.Rule == SidecarMatchRule.LegacyJson);
+        Assert.Contains(
+            result.Candidates,
+            candidate => ReferenceEquals(candidate.SidecarEntry, extensionOmitted)
+                         && candidate.Rule == SidecarMatchRule.ExtensionOmitted);
+    }
+
+    [Theory]
+    [InlineData("README", "supplemental-metadata.json")]
+    [InlineData(".hidden", ".supplemental-metadata.json")]
+    [InlineData(".photo.jpg", ".photo.supplemental-metadata.json")]
+    public void Match_DoesNotTransformExtensionlessNamesOrDotfiles(
+        string mediaPath,
+        string sidecarPath)
+    {
+        var media = Entry(mediaPath);
+
+        var result = Assert.IsType<UnmatchedMediaResult>(
+            Assert.Single(TakeoutSidecarMatcher.Match(
+                [media],
+                [Entry(sidecarPath)])));
+
+        Assert.Same(media, result.MediaEntry);
+    }
+
+    [Fact]
+    public void Match_DoesNotCombineDuplicateNumberAndExtensionOmission()
+    {
+        var media = Entry("photo(1).jpg");
+        var combinedSidecar = Entry("photo.supplemental-metadata(1).json");
+
+        var result = Assert.IsType<UnmatchedMediaResult>(
+            Assert.Single(TakeoutSidecarMatcher.Match([media], [combinedSidecar])));
+
+        Assert.Same(media, result.MediaEntry);
     }
 
     [Theory]
@@ -159,13 +308,13 @@ public sealed class TakeoutSidecarMatcherTests
         {
             Entry("z-last(12).jpg"),
             Entry("nested/middle.jpg"),
-            Entry("A-first(1).jpg")
+            Entry("A-first.jpg")
         };
         var sidecars = new[]
         {
             Entry("nested/middle.jpg.json"),
             Entry("z-last.jpg.supplemental-metadata(12).json"),
-            Entry("A-first.jpg.supplemental-metadata(1).json")
+            Entry("A-first.supplemental-metadata.json")
         };
 
         var forward = TakeoutSidecarMatcher.Match(media, sidecars);
@@ -175,7 +324,7 @@ public sealed class TakeoutSidecarMatcherTests
 
         Assert.Equal(forward, shuffled);
         Assert.Equal(
-            ["A-first(1).jpg", "nested/middle.jpg", "z-last(12).jpg"],
+            ["A-first.jpg", "nested/middle.jpg", "z-last(12).jpg"],
             forward.Select(result => result.MediaEntry.RelativePath));
     }
 
@@ -211,13 +360,13 @@ public sealed class TakeoutSidecarMatcherTests
     public void Match_LeavesSuppliedEntriesAndSourceFilesUnchanged()
     {
         using var fixture = new TemporaryFiles();
-        var mediaPath = fixture.Write("photo(1).jpg", "synthetic media");
+        var mediaPath = fixture.Write("photo.jpg", "synthetic media");
         var sidecarPath = fixture.Write(
-            "photo.jpg.supplemental-metadata(1).json",
+            "photo.supplemental-metadata.json",
             "not parsed as JSON");
-        var media = Entry("photo(1).jpg", new FileInfo(mediaPath).Length);
+        var media = Entry("photo.jpg", new FileInfo(mediaPath).Length);
         var sidecar = Entry(
-            "photo.jpg.supplemental-metadata(1).json",
+            "photo.supplemental-metadata.json",
             new FileInfo(sidecarPath).Length);
         var mediaBefore = File.ReadAllBytes(mediaPath);
         var sidecarBefore = File.ReadAllBytes(sidecarPath);
@@ -229,8 +378,8 @@ public sealed class TakeoutSidecarMatcherTests
 
         Assert.Same(media, result.MediaEntry);
         Assert.Same(sidecar, result.SidecarEntry);
-        Assert.Equal("photo(1).jpg", media.RelativePath);
-        Assert.Equal("photo.jpg.supplemental-metadata(1).json", sidecar.RelativePath);
+        Assert.Equal("photo.jpg", media.RelativePath);
+        Assert.Equal("photo.supplemental-metadata.json", sidecar.RelativePath);
         Assert.True(File.Exists(mediaPath));
         Assert.True(File.Exists(sidecarPath));
         Assert.Equal(mediaBefore, File.ReadAllBytes(mediaPath));

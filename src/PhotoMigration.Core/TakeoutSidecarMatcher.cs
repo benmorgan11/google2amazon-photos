@@ -94,7 +94,7 @@ public static class TakeoutSidecarMatcher
         InventoryEntry mediaEntry,
         IReadOnlyDictionary<string, InventoryEntry> sidecarsByPath)
     {
-        var candidates = new List<SidecarMatchCandidate>(capacity: 3);
+        var candidates = new List<SidecarMatchCandidate>(capacity: 4);
 
         AddCandidate(
             mediaEntry.RelativePath + LegacySuffix,
@@ -107,11 +107,23 @@ public static class TakeoutSidecarMatcher
             sidecarsByPath,
             candidates);
 
-        if (TryCreateDuplicateNumberSidecarPath(mediaEntry.RelativePath, out var duplicatePath))
+        if (TryGetNormalExtensionStart(mediaEntry.RelativePath, out var extensionStart))
         {
+            if (TryCreateDuplicateNumberSidecarPath(
+                    mediaEntry.RelativePath,
+                    extensionStart,
+                    out var duplicatePath))
+            {
+                AddCandidate(
+                    duplicatePath,
+                    SidecarMatchRule.DuplicateNumber,
+                    sidecarsByPath,
+                    candidates);
+            }
+
             AddCandidate(
-                duplicatePath,
-                SidecarMatchRule.DuplicateNumber,
+                mediaEntry.RelativePath[..extensionStart] + SupplementalSuffix,
+                SidecarMatchRule.ExtensionOmitted,
                 sidecarsByPath,
                 candidates);
         }
@@ -126,17 +138,12 @@ public static class TakeoutSidecarMatcher
 
     private static bool TryCreateDuplicateNumberSidecarPath(
         string mediaPath,
+        int extensionStart,
         out string sidecarPath)
     {
         sidecarPath = string.Empty;
 
         var fileNameStart = mediaPath.LastIndexOf('/') + 1;
-        var extensionStart = mediaPath.LastIndexOf('.');
-        if (extensionStart <= fileNameStart || extensionStart == mediaPath.Length - 1)
-        {
-            return false;
-        }
-
         var closingParenthesis = extensionStart - 1;
         if (mediaPath[closingParenthesis] != ')')
         {
@@ -167,6 +174,27 @@ public static class TakeoutSidecarMatcher
 
         var basePath = mediaPath[..openingParenthesis] + mediaPath[extensionStart..];
         sidecarPath = $"{basePath}.supplemental-metadata({digits.ToString()}).json";
+        return true;
+    }
+
+    private static bool TryGetNormalExtensionStart(
+        string mediaPath,
+        out int extensionStart)
+    {
+        extensionStart = -1;
+
+        var fileNameStart = mediaPath.LastIndexOf('/') + 1;
+        if (fileNameStart == mediaPath.Length || mediaPath[fileNameStart] == '.')
+        {
+            return false;
+        }
+
+        extensionStart = mediaPath.LastIndexOf('.');
+        if (extensionStart <= fileNameStart || extensionStart == mediaPath.Length - 1)
+        {
+            return false;
+        }
+
         return true;
     }
 

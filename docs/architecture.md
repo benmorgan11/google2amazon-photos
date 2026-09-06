@@ -64,11 +64,16 @@ same-directory exact forms `<media filename>.json` and
 duplicate-number transformation from `photo(1).jpg` to
 `photo.jpg.supplemental-metadata(1).json`. The duplicate suffix must be final,
 positive, and free of leading zeroes; multiple digits and earlier parentheses
-are preserved.
+are preserved. Finally, it recognizes a supplemental sidecar that omits only the
+media's final extension, such as `photo.jpg` paired with
+`photo.supplemental-metadata.json`. Exact rules remain available for all explicit
+media candidates, while extensionless names and dotfiles are excluded from the
+duplicate-number and extension-omitted transformations.
 
 Results are ordered by media path and identify matches, unmatched media, and
 ambiguous candidates. A sidecar claimed by more than one media entry is never
 assigned. Matching reads neither the sidecar nor the media file.
 
-Truncation, extension-omission, edited-copy, fuzzy, and title-based rules remain
-outside this milestone, as do `(0)` and duplicate suffixes with leading zeroes.
+Truncation, edited-copy, fuzzy, and title-based rules remain outside this
+milestone, as do `(0)`, duplicate suffixes with leading zeroes, and any heuristic
+that combines duplicate-suffix removal with extension omission.
