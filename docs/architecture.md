@@ -91,3 +91,24 @@ These categories are project-level candidates, not guarantees of Google Photos
 or Amazon Photos compatibility. Unsupported and extensionless files remain
 reportable as `Other`; classification performs no filesystem or content
 inspection.
+
+## Read-only Takeout analysis
+
+Core exposes a read-only analysis entry point that composes the implemented
+stages in order: inventory, classification, sidecar matching, and sidecar
+parsing. Photo and video candidates are passed to the matcher as media, while
+JSON candidates are possible sidecars. Only uniquely matched sidecars are
+parsed. A parse failure is retained as a typed invalid-sidecar result and does
+not prevent other media from being analyzed; an inventory failure still fails
+the complete operation.
+
+The result separately retains successfully parsed media, media with invalid
+matched sidecars, unmatched media, ambiguous media and its candidates, JSON
+candidates unused by an accepted match, and `Other` files. Each category uses
+ordinal relative-path ordering and retains its original inventory entries.
+Unused JSON is deliberately not labeled orphan metadata because album and
+export-level JSON classification is not implemented.
+
+The analyzer adds no new matching or parsing heuristics. It does not classify
+album metadata, resolve metadata precedence, hash content, alter metadata, or
+prepare output copies, and it has no CLI presentation in this milestone.
