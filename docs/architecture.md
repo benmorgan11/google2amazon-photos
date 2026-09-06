@@ -43,3 +43,14 @@ Choose metadata precedence and writing tools only after testing representative c
 Read-only recursive inventory of an extracted directory. Return relative paths and byte lengths in deterministic order.
 
 No sidecar parsing, metadata edits, copying, hashing, or uploads.
+
+## Supplemental sidecar parser
+
+Core parses a single explicitly selected supplemental JSON file into optional,
+typed metadata without modifying the source. Recognized timestamps are integral
+Unix seconds represented as strings or numbers. Coordinates come from `geoData`,
+must be finite numbers, and retain valid zero values. Unknown fields are ignored,
+while malformed recognized values fail with a path-bearing parse exception.
+
+The parser does not discover or match sidecars, choose metadata precedence, or
+classify album metadata. Those remain separate milestones.
