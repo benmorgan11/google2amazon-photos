@@ -4,5 +4,6 @@ public enum SidecarMatchRule
 {
     LegacyJson,
     SupplementalMetadataJson,
-    DuplicateNumber
+    DuplicateNumber,
+    ExtensionOmitted
 }
