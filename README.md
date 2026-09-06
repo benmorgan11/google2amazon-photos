@@ -1,5 +1,7 @@
 # Photo Migration
 
+[![CI](https://github.com/benmorgan11/google2amazon-photos/actions/workflows/ci.yml/badge.svg)](https://github.com/benmorgan11/google2amazon-photos/actions/workflows/ci.yml)
+
 A .NET command-line project made to prepare Google Takeout photos and videos to be imported into Amazon Photos.
 
 ## Status
