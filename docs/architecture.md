@@ -77,3 +77,17 @@ assigned. Matching reads neither the sidecar nor the media file.
 Truncation, edited-copy, fuzzy, and title-based rules remain outside this
 milestone, as do `(0)`, duplicate suffixes with leading zeroes, and any heuristic
 that combines duplicate-suffix removal with extension omission.
+
+## Inventory classification
+
+Core classifies supplied inventory entries in memory using only the final
+filename extension and ordinal, case-insensitive extension comparison. The
+initial recognized photo candidates are `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`,
+`.heic`, `.heif`, `.tif`, `.tiff`, and `.dng`. The initial recognized video
+candidates are `.mp4`, `.mov`, `.m4v`, `.avi`, `.mpg`, `.mpeg`, `.3gp`, `.3g2`,
+`.mkv`, `.webm`, `.mts`, and `.m2ts`. Files ending in `.json` are JSON candidates.
+
+These categories are project-level candidates, not guarantees of Google Photos
+or Amazon Photos compatibility. Unsupported and extensionless files remain
+reportable as `Other`; classification performs no filesystem or content
+inspection.
