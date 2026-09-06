@@ -54,3 +54,16 @@ while malformed recognized values fail with a path-bearing parse exception.
 
 The parser does not discover or match sidecars, choose metadata precedence, or
 classify album metadata. Those remain separate milestones.
+
+## Exact sidecar matching
+
+Core accepts explicit media and JSON inventory entries and compares their full
+logical paths using ordinal, case-sensitive rules. This first matcher recognizes
+only `<media filename>.json` and
+`<media filename>.supplemental-metadata.json` in the same directory. Results are
+ordered by media path and identify exact matches, unmatched media, and ambiguous
+candidates. A sidecar claimed by more than one media entry is never assigned.
+
+Matching reads neither the sidecar nor the media file. Duplicate-number,
+truncation, extension-omission, edited-copy, fuzzy, and title-based rules remain
+outside this milestone.
