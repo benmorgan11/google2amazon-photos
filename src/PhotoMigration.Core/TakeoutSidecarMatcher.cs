@@ -1,6 +1,6 @@
 namespace PhotoMigration.Core;
 
-public static class ExactSidecarMatcher
+public static class TakeoutSidecarMatcher
 {
     private const string SupplementalSuffix = ".supplemental-metadata.json";
     private const string LegacySuffix = ".json";
@@ -94,18 +94,27 @@ public static class ExactSidecarMatcher
         InventoryEntry mediaEntry,
         IReadOnlyDictionary<string, InventoryEntry> sidecarsByPath)
     {
-        var candidates = new List<SidecarMatchCandidate>(capacity: 2);
+        var candidates = new List<SidecarMatchCandidate>(capacity: 3);
 
         AddCandidate(
             mediaEntry.RelativePath + LegacySuffix,
-            ExactSidecarMatchRule.LegacyJson,
+            SidecarMatchRule.LegacyJson,
             sidecarsByPath,
             candidates);
         AddCandidate(
             mediaEntry.RelativePath + SupplementalSuffix,
-            ExactSidecarMatchRule.SupplementalMetadataJson,
+            SidecarMatchRule.SupplementalMetadataJson,
             sidecarsByPath,
             candidates);
+
+        if (TryCreateDuplicateNumberSidecarPath(mediaEntry.RelativePath, out var duplicatePath))
+        {
+            AddCandidate(
+                duplicatePath,
+                SidecarMatchRule.DuplicateNumber,
+                sidecarsByPath,
+                candidates);
+        }
 
         candidates.Sort(static (left, right) =>
             StringComparer.Ordinal.Compare(
@@ -115,9 +124,55 @@ public static class ExactSidecarMatcher
         return candidates;
     }
 
+    private static bool TryCreateDuplicateNumberSidecarPath(
+        string mediaPath,
+        out string sidecarPath)
+    {
+        sidecarPath = string.Empty;
+
+        var fileNameStart = mediaPath.LastIndexOf('/') + 1;
+        var extensionStart = mediaPath.LastIndexOf('.');
+        if (extensionStart <= fileNameStart || extensionStart == mediaPath.Length - 1)
+        {
+            return false;
+        }
+
+        var closingParenthesis = extensionStart - 1;
+        if (mediaPath[closingParenthesis] != ')')
+        {
+            return false;
+        }
+
+        var openingParenthesis = mediaPath.LastIndexOf('(', closingParenthesis);
+        if (openingParenthesis <= fileNameStart)
+        {
+            return false;
+        }
+
+        var digits = mediaPath.AsSpan(
+            openingParenthesis + 1,
+            closingParenthesis - openingParenthesis - 1);
+        if (digits.IsEmpty || digits[0] == '0')
+        {
+            return false;
+        }
+
+        foreach (var character in digits)
+        {
+            if (character is < '0' or > '9')
+            {
+                return false;
+            }
+        }
+
+        var basePath = mediaPath[..openingParenthesis] + mediaPath[extensionStart..];
+        sidecarPath = $"{basePath}.supplemental-metadata({digits.ToString()}).json";
+        return true;
+    }
+
     private static void AddCandidate(
         string expectedPath,
-        ExactSidecarMatchRule rule,
+        SidecarMatchRule rule,
         IReadOnlyDictionary<string, InventoryEntry> sidecarsByPath,
         ICollection<SidecarMatchCandidate> candidates)
     {

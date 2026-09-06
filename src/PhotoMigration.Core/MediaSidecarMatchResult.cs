@@ -5,7 +5,7 @@ public abstract record MediaSidecarMatchResult(InventoryEntry MediaEntry);
 public sealed record MatchedMediaSidecarResult(
     InventoryEntry MediaEntry,
     InventoryEntry SidecarEntry,
-    ExactSidecarMatchRule Rule)
+    SidecarMatchRule Rule)
     : MediaSidecarMatchResult(MediaEntry);
 
 public sealed record AmbiguousMediaSidecarResult(

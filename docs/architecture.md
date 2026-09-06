@@ -55,15 +55,20 @@ while malformed recognized values fail with a path-bearing parse exception.
 The parser does not discover or match sidecars, choose metadata precedence, or
 classify album metadata. Those remain separate milestones.
 
-## Exact sidecar matching
+## Sidecar matching
 
 Core accepts explicit media and JSON inventory entries and compares their full
-logical paths using ordinal, case-sensitive rules. This first matcher recognizes
-only `<media filename>.json` and
-`<media filename>.supplemental-metadata.json` in the same directory. Results are
-ordered by media path and identify exact matches, unmatched media, and ambiguous
-candidates. A sidecar claimed by more than one media entry is never assigned.
+logical paths using ordinal, case-sensitive rules. The matcher recognizes the
+same-directory exact forms `<media filename>.json` and
+`<media filename>.supplemental-metadata.json`. It also recognizes an observed
+duplicate-number transformation from `photo(1).jpg` to
+`photo.jpg.supplemental-metadata(1).json`. The duplicate suffix must be final,
+positive, and free of leading zeroes; multiple digits and earlier parentheses
+are preserved.
 
-Matching reads neither the sidecar nor the media file. Duplicate-number,
-truncation, extension-omission, edited-copy, fuzzy, and title-based rules remain
-outside this milestone.
+Results are ordered by media path and identify matches, unmatched media, and
+ambiguous candidates. A sidecar claimed by more than one media entry is never
+assigned. Matching reads neither the sidecar nor the media file.
+
+Truncation, extension-omission, edited-copy, fuzzy, and title-based rules remain
+outside this milestone, as do `(0)` and duplicate suffixes with leading zeroes.
