@@ -430,3 +430,63 @@ checks components, source length, and the final destination again before
 success, but this reduces rather than eliminates these races. A future publisher
 must repeat the checks, use create-new or non-overwriting move semantics, and
 fail closed if any path has changed.
+
+## Read-only media-data hashing
+
+Core can ask an explicitly supplied ExifTool executable for the
+`ImageDataHash` of one successfully staged temporary media copy. The reader
+accepts a `VerifiedMediaFileStagingSuccessResult` and first checks that its byte
+count and full-file hashes are internally consistent, that its paths are
+absolute, and that the temporary file remains beside its intended final
+destination with the same extension. The original Takeout source is not opened.
+
+The reader supports JPEG/JPG, HEIC/HEIF, MOV, and MP4, using case-insensitive
+extension matching. It checks the temporary copy before ExifTool runs to ensure
+that the path exists and identifies a regular file rather than a symbolic link
+or reparse point. ExifTool is started directly with these exact arguments:
+
+```text
+-json
+-G1
+-s
+-api
+ImageHashType=SHA256
+-ImageDataHash
+<absolute temporary-copy path>
+```
+
+The reader does not request all metadata or use any write option. ExifTool
+documents `ImageDataHash` as a hash of the media-data portion and
+`ImageHashType` as the API setting that selects the algorithm.
+[ExifTool extra tags](https://exiftool.org/TagNames/Extra.html)
+
+A valid response contains exactly one JSON object and one
+`File:ImageDataHash` value. The value must be exactly 64 ASCII hexadecimal
+characters and is normalized to uppercase; the original value remains
+available for diagnostics. Warnings and standard error are captured separately
+and are not interpreted as hashes. Typed results distinguish invalid staging
+data or paths, missing, linked, or non-regular temporary files, unsupported
+formats, ExifTool execution failures, timeouts, malformed JSON, missing hashes,
+and invalid hashes.
+
+After ExifTool exits successfully, the reader independently opens the temporary
+copy and computes its current whole-file SHA-256 and byte count. It checks the
+path again before and after this read and accepts the ExifTool value only when
+the count and whole-file hash still match the staging result. Missing, linked,
+or non-regular files keep their specific typed failures; a byte-count or hash
+mismatch returns a distinct verification failure with the expected and actual
+values. Verification never deletes or repairs the temporary copy.
+
+Hashing a large video can take materially longer than reading selected metadata,
+so the configurable default timeout is ten minutes. Tests use short explicit
+timeouts. Timeout cleanup kills the process tree, waits at most one second for
+exit, and bounds redirected-output cleanup; it never performs an indefinite
+process wait.
+
+This operation is read-only. The post-process whole-file SHA-256 is compared
+only with the stager's whole-file SHA-256. It is never compared with ExifTool's
+media-only `ImageDataHash`, because those hashes cover different byte sets.
+Portable path checks cannot eliminate a race in which another process replaces
+the temporary file between validation and process access. The reader validates
+again after ExifTool exits, but a later publishing stage must repeat all
+filesystem safety checks before trusting or moving the file.
