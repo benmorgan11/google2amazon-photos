@@ -32,4 +32,4 @@ jobs:
         run: dotnet build PhotoMigration.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test PhotoMigration.slnx --configuration Release --no-build
+        run: dotnet test PhotoMigration.slnx --configuration Release --no-build --maxcpucount:1

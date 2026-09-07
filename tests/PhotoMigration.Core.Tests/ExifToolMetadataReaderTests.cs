@@ -4,6 +4,7 @@ using System.Text.Json;
 
 namespace PhotoMigration.Core.Tests;
 
+[Collection(ExternalProcessTestCollection.Name)]
 public sealed class ExifToolMetadataReaderTests
 {
     [Fact]

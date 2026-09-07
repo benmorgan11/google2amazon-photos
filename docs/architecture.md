@@ -311,5 +311,19 @@ from inventory-relative paths, checked to remain within the analyzed root, and
 made absolute before being passed to the reader.
 
 This service does not detect ExifTool, add format support, create reports or
-output directories, copy or rename files, write metadata, or provide CLI
-presentation. Source media and sidecars remain unchanged.
+output directories, copy or rename files, or write metadata. Source media and
+sidecars remain unchanged.
+
+The CLI exposes this service through the `plan` command with a Takeout folder and
+an optional authoritative `--exiftool` path. It validates command arguments and
+detects ExifTool once. The CLI prints deterministic summary counts and details
+only for attention cases: unmatched, invalid, or ambiguous sidecars; metadata
+review reasons; embedded-read failures; and formats whose embedded readers are
+not implemented. Ambiguous details retain candidate paths and match rules.
+Parsed values and captured ExifTool output are never printed.
+
+A completed plan returns exit code `0` when no item needs attention and `2`
+otherwise. Invalid arguments, ExifTool detection failures, and operational
+failures return `1`. Unused JSON candidates and `Other` files remain summary
+counts but do not affect the exit code. The command finishes completed runs with
+an explicit read-only confirmation and does not create saved reports.

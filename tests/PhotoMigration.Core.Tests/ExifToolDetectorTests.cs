@@ -3,6 +3,7 @@ using System.Text;
 
 namespace PhotoMigration.Core.Tests;
 
+[Collection(ExternalProcessTestCollection.Name)]
 public sealed class ExifToolDetectorTests
 {
     [Fact]
