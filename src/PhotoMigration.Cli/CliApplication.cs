@@ -6,7 +6,8 @@ public static class CliApplication
 {
     private const string Usage =
         "Usage: PhotoMigration.Cli inventory <folder>" +
-        "\n       PhotoMigration.Cli analyze <folder>";
+        "\n       PhotoMigration.Cli analyze <folder>" +
+        "\n       PhotoMigration.Cli check-exiftool [--path <executable-path>]";
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
@@ -14,7 +15,7 @@ public static class CliApplication
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(error);
 
-        if (args.Length != 2)
+        if (args.Length == 0)
         {
             error.WriteLine(Usage);
             return 1;
@@ -24,8 +25,9 @@ public static class CliApplication
         {
             return args[0] switch
             {
-                "inventory" => RunInventory(args[1], output),
-                "analyze" => RunAnalysis(args[1], output),
+                "inventory" when args.Length == 2 => RunInventory(args[1], output),
+                "analyze" when args.Length == 2 => RunAnalysis(args[1], output),
+                "check-exiftool" => RunExifToolCheck(args, output, error),
                 _ => WriteUsageError(error)
             };
         }
@@ -38,6 +40,64 @@ public static class CliApplication
             error.WriteLine($"Error: {exception.Message}");
             return 1;
         }
+    }
+
+    private static int RunExifToolCheck(
+        string[] args,
+        TextWriter output,
+        TextWriter error)
+    {
+        string? explicitExecutablePath;
+
+        if (args.Length == 1)
+        {
+            explicitExecutablePath = null;
+        }
+        else if (args.Length == 3
+                 && string.Equals(args[1], "--path", StringComparison.Ordinal)
+                 && !string.IsNullOrWhiteSpace(args[2]))
+        {
+            explicitExecutablePath = args[2];
+        }
+        else
+        {
+            return WriteUsageError(error);
+        }
+
+        var result = ExifToolDetector.Detect(explicitExecutablePath);
+        return result switch
+        {
+            ExifToolFoundResult found => WriteExifToolFound(found, output),
+            ExifToolNotFoundResult notFound => WriteError(error, notFound.Message),
+            ExifToolUnableToRunResult unableToRun => WriteError(
+                error,
+                $"{unableToRun.Message} Executable: '{unableToRun.ExecutablePath}'."),
+            ExifToolInvalidVersionResult invalidVersion => WriteError(
+                error,
+                $"ExifTool at '{invalidVersion.ExecutablePath}' returned invalid version output."),
+            ExifToolVersionCheckTimedOutResult timedOut => WriteTimeoutError(error, timedOut),
+            _ => WriteError(error, "ExifTool detection returned an unsupported result.")
+        };
+    }
+
+    private static int WriteExifToolFound(ExifToolFoundResult found, TextWriter output)
+    {
+        output.WriteLine($"ExifTool version: {found.Version}");
+        output.WriteLine($"Executable path: {found.ExecutablePath}");
+        return 0;
+    }
+
+    private static int WriteTimeoutError(
+        TextWriter error,
+        ExifToolVersionCheckTimedOutResult timedOut)
+    {
+        var message = $"ExifTool version check timed out for '{timedOut.ExecutablePath}'.";
+        if (timedOut.TerminationError is not null)
+        {
+            message += $" {timedOut.TerminationError}";
+        }
+
+        return WriteError(error, message);
     }
 
     private static int RunInventory(string rootPath, TextWriter output)
@@ -141,6 +201,12 @@ public static class CliApplication
     private static int WriteUsageError(TextWriter error)
     {
         error.WriteLine(Usage);
+        return 1;
+    }
+
+    private static int WriteError(TextWriter error, string message)
+    {
+        error.WriteLine($"Error: {message}");
         return 1;
     }
 }

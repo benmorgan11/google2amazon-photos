@@ -61,6 +61,22 @@ Command exit codes are:
 Unused JSON candidates and `Other` files are counted but do not produce exit
 code `2`, because they may be album metadata or unrelated export files.
 
+Check whether ExifTool is installed and runnable:
+
+```console
+dotnet run --project src/PhotoMigration.Cli -- check-exiftool
+```
+
+To validate one authoritative executable path instead of searching `PATH`:
+
+```console
+dotnet run --project src/PhotoMigration.Cli -- check-exiftool --path "/usr/local/bin/exiftool"
+```
+
+The command prints the detected version and absolute executable path on success.
+It is read-only and returns exit code `1` when ExifTool is missing, cannot run,
+times out, returns invalid version output, or receives invalid arguments.
+
 ## Privacy
 
 Keep real exports, photos, sidecars, credentials, and migration reports outside the repository. Tests use synthetic data.
