@@ -98,6 +98,7 @@ public static class LocationDecisionMaker
                 .OrderBy(candidate => candidate.SourceValue.GroupName, StringComparer.Ordinal)
                 .ThenBy(candidate => candidate.SourceValue.TagName, StringComparer.Ordinal)
                 .ThenBy(candidate => candidate.SourceValue.RawValue, StringComparer.Ordinal)
+                .ThenBy(candidate => candidate.SemanticField)
                 .ThenBy(candidate => candidate.ReferenceValue?.GroupName, StringComparer.Ordinal)
                 .ThenBy(candidate => candidate.ReferenceValue?.TagName, StringComparer.Ordinal)
                 .ThenBy(candidate => candidate.ReferenceValue?.RawValue, StringComparer.Ordinal)

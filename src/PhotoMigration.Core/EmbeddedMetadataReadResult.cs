@@ -11,7 +11,8 @@ public enum EmbeddedMetadataField
     GpsLongitude,
     GpsLongitudeReference,
     GpsAltitude,
-    GpsAltitudeReference
+    GpsAltitudeReference,
+    GpsCoordinates
 }
 
 public sealed record EmbeddedMetadataValue(

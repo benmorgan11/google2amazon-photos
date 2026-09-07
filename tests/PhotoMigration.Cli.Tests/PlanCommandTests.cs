@@ -91,7 +91,7 @@ public sealed class PlanCommandTests
         fixture.WriteTakeout(
             "A-ambiguous.jpg.supplemental-metadata.json",
             "{}");
-        fixture.WriteTakeout("C-video.mp4", "media");
+        fixture.WriteTakeout("C-video.m4v", "media");
         fixture.WriteTakeout("B-failure.jpg", "media");
         fixture.WriteTakeout("album.json", "PRIVATE ALBUM CONTENTS");
         fixture.WriteTakeout("notes.txt", "PRIVATE OTHER CONTENTS");
@@ -134,7 +134,7 @@ public sealed class PlanCommandTests
             first.Output);
         Assert.Contains("Embedded metadata: ExifTool could not read the file.", first.Output);
         Assert.Contains(
-            "Embedded metadata: reader not implemented yet for format '.mp4'.",
+            "Embedded metadata: reader not implemented yet for format '.m4v'.",
             first.Output);
         Assert.Contains(
             "Metadata: embedded and sidecar capture times conflict.",
@@ -144,8 +144,8 @@ public sealed class PlanCommandTests
             first.Output);
 
         AssertAppearsBefore(first.Output, "A-ambiguous.jpg", "B-failure.jpg");
-        AssertAppearsBefore(first.Output, "B-failure.jpg", "C-video.mp4");
-        AssertAppearsBefore(first.Output, "C-video.mp4", "D-invalid.jpg");
+        AssertAppearsBefore(first.Output, "B-failure.jpg", "C-video.m4v");
+        AssertAppearsBefore(first.Output, "C-video.m4v", "D-invalid.jpg");
         AssertAppearsBefore(first.Output, "D-invalid.jpg", "G-review.jpg");
 
         foreach (var privateValue in new[]

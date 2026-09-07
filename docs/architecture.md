@@ -139,26 +139,47 @@ terminated. The CLI exposes this check through `check-exiftool`, with an optiona
 authoritative `--path`; it prints only the detected version and executable path.
 Installation and metadata reading or writing remain outside this boundary.
 
-## JPEG and HEIC/HEIF embedded metadata reading
+## Photo and video embedded metadata reading
 
 Core can read planning metadata from one explicitly supplied `.jpg`, `.jpeg`,
 `.heic`, or `.heif` file by starting an explicitly supplied ExifTool executable
-directly. Extension matching is case-insensitive, and every supported format uses
-the same selected-tag request. The reader requests grouped JSON for EXIF and XMP
-capture dates, the EXIF original-time offset, and EXIF/XMP GPS latitude,
-longitude, and altitude. Individual GPS tags use ExifTool's `#` suffix for
-machine-readable values, and EXIF latitude, longitude, and altitude references
-are requested the same way. The reader does not use global `-n`, so capture-time
-formatting is unchanged. It preserves each returned value's semantic field,
-ExifTool group and tag, JSON kind, and raw text; it does not select a preferred
-date or location.
+directly. Extension matching is case-insensitive. These image formats retain the
+existing selected-tag request for grouped EXIF and XMP capture dates, the EXIF
+original-time offset, and EXIF/XMP GPS latitude, longitude, and altitude.
+Individual GPS tags use ExifTool's `#` suffix for machine-readable values, and
+EXIF latitude, longitude, and altitude references are requested the same way.
+
+`.mov` and `.mp4` use a separate QuickTime request. The selected date tags are
+`QuickTime:CreateDate`, `Keys:CreationDate`, `UserData:DateTimeOriginal`, and the
+`ContentCreateDate` values in Keys, ItemList, and UserData. Filesystem dates,
+modify dates, track dates, and media dates are deliberately excluded. The reader
+does not enable ExifTool's `QuickTimeUTC` option: ExifTool documents that integer
+QuickTime dates are intended to be UTC but are often written as local time by
+cameras, so it leaves their timezone unspecified by default.
+[ExifTool QuickTime tags](https://exiftool.org/TagNames/QuickTime.html)
+
+QuickTime location selection reads raw `GPSCoordinates` from Keys, ItemList, and
+UserData. The GPS parser accepts a conservative signed ISO 6709-style latitude
+and longitude with optional signed altitude. It retains the original combined
+value, group, and tag as provenance for every parsed component. Components from
+one combined value remain atomic when complete locations are built; different
+combined values are not cross-paired. Malformed, non-finite, and out-of-range
+values remain typed GPS parsing issues, so a present invalid location prevents
+automatic sidecar fallback. Valid embedded `0, 0` coordinates remain valid.
+
+The reader does not use global `-n`, so capture-time formatting is unchanged. It
+preserves each returned value's semantic field, ExifTool group and tag, JSON
+kind, and raw text; it does not select a preferred date or location. Capture
+dates without explicit offsets remain timezone-unknown, while offset-bearing
+dates retain their instant and offset. Multiple values remain separate for the
+decision layer to compare.
 
 Typed outcomes distinguish success, unsupported media, missing media, ExifTool
 failure, timeout, and malformed JSON. Standard error and JSON warning or error
 diagnostics are retained without automatic printing. Process execution and
 cleanup are bounded, and the operation never writes media, metadata, backups,
-copies, or timestamps. Video and other image formats, metadata precedence, and
-writing remain future work.
+copies, or timestamps. Other video and image formats, timed GPS extraction,
+metadata writing, and media pairing remain future work.
 
 ## Embedded capture-time parsing
 
@@ -190,6 +211,12 @@ references do not produce guessed values. Signed XMP values are retained without
 using EXIF references. Every candidate keeps its source value and any reference
 used as provenance; malformed numbers, non-finite values, range failures, and
 reference problems remain typed issues in deterministic ordinal order.
+
+QuickTime `GPSCoordinates` values are parsed as atomic signed coordinate sets.
+Their latitude, longitude, and optional altitude components keep the same
+original combined value as provenance and are not mixed with components from a
+different combined value. Invalid combined values remain parsing issues rather
+than disappearing as missing metadata.
 
 The parser does not select a preferred location, combine coordinates, compare
 sidecar values, apply metadata precedence, run tools, or read or write files.

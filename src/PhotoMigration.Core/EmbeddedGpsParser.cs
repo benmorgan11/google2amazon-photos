@@ -23,6 +23,12 @@ public static class EmbeddedGpsParser
         var candidates = new List<EmbeddedGpsCandidate>();
         var issues = new List<EmbeddedGpsParsingIssue>();
 
+        foreach (var sourceValue in orderedValues.Where(
+                     value => value.Field == EmbeddedMetadataField.GpsCoordinates))
+        {
+            ParseQuickTimeCoordinates(sourceValue, candidates, issues);
+        }
+
         foreach (var sourceValue in orderedValues.Where(IsGpsDataValue))
         {
             if (!double.TryParse(
@@ -112,6 +118,7 @@ public static class EmbeddedGpsParser
                 .OrderBy(candidate => candidate.SourceValue.GroupName, StringComparer.Ordinal)
                 .ThenBy(candidate => candidate.SourceValue.TagName, StringComparer.Ordinal)
                 .ThenBy(candidate => candidate.SourceValue.RawValue, StringComparer.Ordinal)
+                .ThenBy(candidate => candidate.SemanticField)
                 .ThenBy(candidate => candidate.ReferenceValue?.GroupName, StringComparer.Ordinal)
                 .ThenBy(candidate => candidate.ReferenceValue?.TagName, StringComparer.Ordinal)
                 .ThenBy(candidate => candidate.ReferenceValue?.RawValue, StringComparer.Ordinal)
@@ -128,6 +135,160 @@ public static class EmbeddedGpsParser
                 .ToList()
                 .AsReadOnly());
     }
+
+    private static void ParseQuickTimeCoordinates(
+        EmbeddedMetadataValue sourceValue,
+        ICollection<EmbeddedGpsCandidate> candidates,
+        ICollection<EmbeddedGpsParsingIssue> issues)
+    {
+        if (ContainsNonFiniteToken(sourceValue.RawValue))
+        {
+            issues.Add(Issue(
+                EmbeddedGpsParsingIssueKind.NonFiniteNumber,
+                sourceValue,
+                null,
+                "QuickTime GPS coordinates must contain only finite numbers."));
+            return;
+        }
+
+        if (!TryParseSignedCoordinates(
+                sourceValue.RawValue,
+                out var latitude,
+                out var longitude,
+                out var altitude))
+        {
+            issues.Add(Issue(
+                EmbeddedGpsParsingIssueKind.MalformedNumber,
+                sourceValue,
+                null,
+                "QuickTime GPS coordinates must contain signed latitude and longitude " +
+                "with optional signed altitude."));
+            return;
+        }
+
+        if (!IsWithinRange(EmbeddedMetadataField.GpsLatitude, latitude)
+            || !IsWithinRange(EmbeddedMetadataField.GpsLongitude, longitude))
+        {
+            issues.Add(Issue(
+                EmbeddedGpsParsingIssueKind.OutOfRange,
+                sourceValue,
+                null,
+                "QuickTime latitude must be between -90 and 90 degrees and longitude " +
+                "between -180 and 180 degrees."));
+            return;
+        }
+
+        candidates.Add(CombinedCandidate(
+            sourceValue,
+            EmbeddedMetadataField.GpsLatitude,
+            latitude));
+        candidates.Add(CombinedCandidate(
+            sourceValue,
+            EmbeddedMetadataField.GpsLongitude,
+            longitude));
+
+        if (altitude is not null)
+        {
+            candidates.Add(CombinedCandidate(
+                sourceValue,
+                EmbeddedMetadataField.GpsAltitude,
+                altitude.Value));
+        }
+    }
+
+    private static bool TryParseSignedCoordinates(
+        string rawValue,
+        out double latitude,
+        out double longitude,
+        out double? altitude)
+    {
+        latitude = default;
+        longitude = default;
+        altitude = null;
+
+        var text = rawValue.AsSpan().Trim();
+        if (text.EndsWith('/'))
+        {
+            text = text[..^1];
+        }
+
+        var index = 0;
+        if (!TryReadSignedDecimal(text, ref index, out latitude)
+            || !TryReadSignedDecimal(text, ref index, out longitude))
+        {
+            return false;
+        }
+
+        if (index < text.Length)
+        {
+            if (!TryReadSignedDecimal(text, ref index, out var parsedAltitude))
+            {
+                return false;
+            }
+
+            altitude = parsedAltitude;
+        }
+
+        return index == text.Length
+               && double.IsFinite(latitude)
+               && double.IsFinite(longitude)
+               && (altitude is null || double.IsFinite(altitude.Value));
+    }
+
+    private static bool TryReadSignedDecimal(
+        ReadOnlySpan<char> text,
+        ref int index,
+        out double value)
+    {
+        value = default;
+        if (index >= text.Length || text[index] is not ('+' or '-'))
+        {
+            return false;
+        }
+
+        var start = index++;
+        var digitsBeforeDecimal = 0;
+        while (index < text.Length && char.IsAsciiDigit(text[index]))
+        {
+            digitsBeforeDecimal++;
+            index++;
+        }
+
+        var digitsAfterDecimal = 0;
+        if (index < text.Length && text[index] == '.')
+        {
+            index++;
+            while (index < text.Length && char.IsAsciiDigit(text[index]))
+            {
+                digitsAfterDecimal++;
+                index++;
+            }
+        }
+
+        if (digitsBeforeDecimal == 0 && digitsAfterDecimal == 0)
+        {
+            return false;
+        }
+
+        return double.TryParse(
+            text[start..index],
+            NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
+            CultureInfo.InvariantCulture,
+            out value);
+    }
+
+    private static bool ContainsNonFiniteToken(string rawValue) =>
+        rawValue.Contains("NaN", StringComparison.OrdinalIgnoreCase)
+        || rawValue.Contains("Infinity", StringComparison.OrdinalIgnoreCase);
+
+    private static EmbeddedGpsCandidate CombinedCandidate(
+        EmbeddedMetadataValue sourceValue,
+        EmbeddedMetadataField semanticField,
+        double value) =>
+        new(sourceValue, value, null)
+        {
+            SemanticField = semanticField
+        };
 
     private static bool IsGpsDataValue(EmbeddedMetadataValue value) =>
         value.Field is EmbeddedMetadataField.GpsLatitude

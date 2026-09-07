@@ -123,12 +123,14 @@ unique temporary file. [ExifTool writing documentation](https://exiftool.org/wri
 
 ## Staged rollout
 
-Start with JPEG. Its EXIF behavior is established, Amazon lists it as supported,
-and `ImageDataHash` can verify its image payload. Add HEIC and HEIF only after
-controlled tests confirm dates, offsets, GPS, orientation, previews, and media
-hashes. Treat MOV and MP4 as a separate phase because QuickTime dates, offsets,
-and location fields need their own policy. Other formats remain analysis-only
-until they receive dedicated write and verification tests.
+Start metadata writing with JPEG. Its EXIF behavior is established, Amazon lists
+it as supported, and `ImageDataHash` can verify its image payload. Read-only
+planning may inspect HEIC, HEIF, MOV, and MP4 before writing is enabled for those
+formats. Add HEIC and HEIF writing only after controlled tests confirm dates,
+offsets, GPS, orientation, previews, and media hashes. Treat MOV and MP4 writing
+as a separate phase because QuickTime dates, offsets, and location fields need
+their own policy. Other formats remain analysis-only until they receive
+dedicated write and verification tests.
 [Amazon Photos file requirements](https://digprjsurvey.amazon.co.uk/csad/help/node/GGU2SU8Y22DZYRMQ)
 
 ## Amazon behavior still requiring controlled testing

@@ -13,7 +13,10 @@ public enum EmbeddedGpsParsingIssueKind
 public sealed record EmbeddedGpsCandidate(
     EmbeddedMetadataValue SourceValue,
     double ParsedValue,
-    EmbeddedMetadataValue? ReferenceValue);
+    EmbeddedMetadataValue? ReferenceValue)
+{
+    public EmbeddedMetadataField SemanticField { get; init; } = SourceValue.Field;
+}
 
 public sealed record EmbeddedGpsParsingIssue(
     EmbeddedGpsParsingIssueKind Kind,
