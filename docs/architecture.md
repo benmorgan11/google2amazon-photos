@@ -38,6 +38,11 @@ Determine Amazon Photos behavior for capture dates, timezones, GPS, video metada
 
 Choose metadata precedence and writing tools only after testing representative cases.
 
+The proposed external metadata engine, conservative precedence policy,
+separate-output-copy workflow, media-data-hash verification, and staged format
+rollout are documented in the
+[embedded metadata strategy](embedded-metadata-strategy.md).
+
 ## First feature
 
 Read-only recursive inventory of an extracted directory. Return relative paths and byte lengths in deterministic order.
