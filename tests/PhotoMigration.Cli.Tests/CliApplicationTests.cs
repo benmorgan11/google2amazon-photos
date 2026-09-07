@@ -130,6 +130,78 @@ public sealed class CliApplicationTests
         Assert.Empty(execution.Error);
     }
 
+    [Fact]
+    public void CheckExifTool_WithValidExplicitExecutable_PrintsVersionAndPath()
+    {
+        if (!SupportsPosixScripts())
+        {
+            return;
+        }
+
+        using var executable = new TemporaryExecutable("13.59");
+
+        var execution = Run("check-exiftool", "--path", executable.Path);
+
+        Assert.Equal(0, execution.ExitCode);
+        Assert.Equal(
+            $"ExifTool version: 13.59{Environment.NewLine}" +
+            $"Executable path: {Path.GetFullPath(executable.Path)}{Environment.NewLine}",
+            execution.Output);
+        Assert.Empty(execution.Error);
+    }
+
+    [Fact]
+    public void CheckExifTool_WithMissingExplicitExecutable_PrintsUsefulError()
+    {
+        using var directory = new TemporaryDirectory();
+        var missingPath = Path.Combine(directory.Path, "missing-exiftool");
+
+        var execution = Run("check-exiftool", "--path", missingPath);
+
+        Assert.Equal(1, execution.ExitCode);
+        Assert.Empty(execution.Output);
+        Assert.Contains("Error:", execution.Error);
+        Assert.Contains("explicit ExifTool path does not exist", execution.Error);
+        Assert.Contains(Path.GetFullPath(missingPath), execution.Error);
+    }
+
+    [Fact]
+    public void CheckExifTool_WithInvalidVersion_PrintsUsefulError()
+    {
+        if (!SupportsPosixScripts())
+        {
+            return;
+        }
+
+        using var executable = new TemporaryExecutable("not a version");
+
+        var execution = Run("check-exiftool", "--path", executable.Path);
+
+        Assert.Equal(1, execution.ExitCode);
+        Assert.Empty(execution.Output);
+        Assert.Contains("returned invalid version output", execution.Error);
+        Assert.Contains(Path.GetFullPath(executable.Path), execution.Error);
+        Assert.DoesNotContain("not a version", execution.Error);
+    }
+
+    [Fact]
+    public void CheckExifTool_WithInvalidArguments_PrintsUsage()
+    {
+        var missingPathValue = Run("check-exiftool", "--path");
+        var unknownOption = Run("check-exiftool", "--other", "value");
+
+        Assert.Equal(1, missingPathValue.ExitCode);
+        Assert.Empty(missingPathValue.Output);
+        Assert.Contains(
+            "PhotoMigration.Cli check-exiftool [--path <executable-path>]",
+            missingPathValue.Error);
+        Assert.Equal(1, unknownOption.ExitCode);
+        Assert.Empty(unknownOption.Output);
+        Assert.Contains(
+            "PhotoMigration.Cli check-exiftool [--path <executable-path>]",
+            unknownOption.Error);
+    }
+
     private static CliExecution Run(params string[] args)
     {
         using var output = new StringWriter();
@@ -139,6 +211,57 @@ public sealed class CliApplicationTests
     }
 
     private sealed record CliExecution(int ExitCode, string Output, string Error);
+
+    private static bool SupportsPosixScripts() =>
+        OperatingSystem.IsMacOS() || OperatingSystem.IsLinux();
+
+    private sealed class TemporaryDirectory : IDisposable
+    {
+        public TemporaryDirectory()
+        {
+            Path = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                $"PhotoMigration-Cli-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(Path);
+        }
+
+        public string Path { get; }
+
+        public void Dispose()
+        {
+            Directory.Delete(Path, recursive: true);
+        }
+    }
+
+    private sealed class TemporaryExecutable : IDisposable
+    {
+        private readonly TemporaryDirectory _directory = new();
+
+        public TemporaryExecutable(string versionOutput)
+        {
+            Path = System.IO.Path.Combine(_directory.Path, "exiftool");
+            File.WriteAllText(
+                Path,
+                $"#!/bin/sh\nprintf '%s\\n' '{versionOutput}'\n",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            if (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+            {
+                File.SetUnixFileMode(
+                    Path,
+                    UnixFileMode.UserRead
+                    | UnixFileMode.UserWrite
+                    | UnixFileMode.UserExecute);
+            }
+        }
+
+        public string Path { get; }
+
+        public void Dispose()
+        {
+            _directory.Dispose();
+        }
+    }
 
     private sealed class TemporaryTakeout : IDisposable
     {

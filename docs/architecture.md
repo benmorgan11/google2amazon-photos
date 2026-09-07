@@ -135,5 +135,6 @@ Intel macOS location. Candidate paths are absolute and deduplicated.
 Validation starts the first existing candidate directly with only `-ver`, using
 redirected output and no shell. Typed results distinguish success, absence,
 execution failure, invalid version output, and timeout. A timed-out process is
-terminated. Installation, metadata reading or writing, and CLI integration are
-outside this boundary.
+terminated. The CLI exposes this check through `check-exiftool`, with an optional
+authoritative `--path`; it prints only the detected version and executable path.
+Installation and metadata reading or writing remain outside this boundary.
