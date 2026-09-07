@@ -7,9 +7,9 @@ A .NET command-line project made to prepare Google Takeout photos and videos to 
 ## Status
 
 Read-only inventory, Takeout analysis, ExifTool checking, and metadata planning
-commands are implemented. Planning compares selected embedded JPEG metadata with
-unambiguous sidecar metadata and reports proposed changes and review cases
-without changing source files.
+commands are implemented. Planning compares selected embedded JPEG and HEIC/HEIF
+metadata with unambiguous sidecar metadata and reports proposed changes and
+review cases without changing source files.
 
 ## Goals
 

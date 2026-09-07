@@ -139,24 +139,26 @@ terminated. The CLI exposes this check through `check-exiftool`, with an optiona
 authoritative `--path`; it prints only the detected version and executable path.
 Installation and metadata reading or writing remain outside this boundary.
 
-## JPEG embedded metadata reading
+## JPEG and HEIC/HEIF embedded metadata reading
 
-Core can read planning metadata from one explicitly supplied `.jpg` or `.jpeg`
-file by starting an explicitly supplied ExifTool executable directly. The reader
-requests grouped JSON for EXIF and XMP capture dates, the EXIF original-time
-offset, and EXIF/XMP GPS latitude, longitude, and altitude. Individual GPS tags
-use ExifTool's `#` suffix for machine-readable values, and EXIF latitude,
-longitude, and altitude references are requested the same way. The reader does
-not use global `-n`, so capture-time formatting is unchanged. It preserves each
-returned value's semantic field, ExifTool group and tag, JSON kind, and raw text;
-it does not select a preferred date or location.
+Core can read planning metadata from one explicitly supplied `.jpg`, `.jpeg`,
+`.heic`, or `.heif` file by starting an explicitly supplied ExifTool executable
+directly. Extension matching is case-insensitive, and every supported format uses
+the same selected-tag request. The reader requests grouped JSON for EXIF and XMP
+capture dates, the EXIF original-time offset, and EXIF/XMP GPS latitude,
+longitude, and altitude. Individual GPS tags use ExifTool's `#` suffix for
+machine-readable values, and EXIF latitude, longitude, and altitude references
+are requested the same way. The reader does not use global `-n`, so capture-time
+formatting is unchanged. It preserves each returned value's semantic field,
+ExifTool group and tag, JSON kind, and raw text; it does not select a preferred
+date or location.
 
 Typed outcomes distinguish success, unsupported media, missing media, ExifTool
 failure, timeout, and malformed JSON. Standard error and JSON warning or error
 diagnostics are retained without automatic printing. Process execution and
 cleanup are bounded, and the operation never writes media, metadata, backups,
-copies, or timestamps. Other media formats, analysis integration, metadata
-precedence, writing, and CLI presentation remain future work.
+copies, or timestamps. Video and other image formats, metadata precedence, and
+writing remain future work.
 
 ## Embedded capture-time parsing
 

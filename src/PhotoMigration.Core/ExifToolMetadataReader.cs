@@ -8,6 +8,15 @@ public static class ExifToolMetadataReader
 {
     private const int CleanupWaitMilliseconds = 1_000;
 
+    private static readonly HashSet<string> SupportedExtensions = new(
+        StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg",
+        ".jpeg",
+        ".heic",
+        ".heif"
+    };
+
     private static readonly IReadOnlyDictionary<string, EmbeddedMetadataField> FieldsByTag =
         new Dictionary<string, EmbeddedMetadataField>(StringComparer.Ordinal)
         {
@@ -63,8 +72,7 @@ public static class ExifToolMetadataReader
 
         var absoluteMediaPath = Path.GetFullPath(mediaPath);
         var extension = Path.GetExtension(absoluteMediaPath);
-        if (!string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase))
+        if (!SupportedExtensions.Contains(extension))
         {
             return new EmbeddedMetadataUnsupportedMediaResult(
                 absoluteMediaPath,
