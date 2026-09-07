@@ -192,6 +192,63 @@ public sealed class ExifToolMetadataReaderTests
         Assert.Equal(originalLastWriteTime, File.GetLastWriteTimeUtc(mediaPath));
     }
 
+    [Theory]
+    [InlineData("videos with spaces/clip.MoV")]
+    [InlineData("videos with spaces/clip.mP4")]
+    public void Read_MovAndMp4UseQuickTimeSelectedTagsWithoutChangingSource(
+        string relativePath)
+    {
+        if (!SupportsPosixScripts())
+        {
+            return;
+        }
+
+        using var fixture = new TemporaryFixture();
+        var mediaPath = fixture.WriteMedia(relativePath, [5, 6, 7, 8]);
+        File.SetLastWriteTimeUtc(mediaPath, DateTime.UtcNow.AddDays(-2));
+        var originalContents = File.ReadAllBytes(mediaPath);
+        var originalLastWriteTime = File.GetLastWriteTimeUtc(mediaPath);
+        var executablePath = fixture.CreateExecutable(
+            "tools with spaces/fake exiftool",
+            SuccessfulVideoScript(
+                """
+                [{
+                  "QuickTime:CreateDate": "2020:01:02 03:04:05",
+                  "Keys:CreationDate": "2020:01:02 03:04:05-07:00",
+                  "Keys:GPSCoordinates": "+34.25-118.5+25.5/"
+                }]
+                """));
+
+        var result = Assert.IsType<EmbeddedMetadataReadSuccessResult>(
+            ExifToolMetadataReader.Read(mediaPath, executablePath));
+
+        Assert.Collection(
+            result.Values,
+            value => AssertValue(
+                value,
+                EmbeddedMetadataField.CaptureDateTime,
+                "Keys",
+                "CreationDate",
+                "2020:01:02 03:04:05-07:00",
+                JsonValueKind.String),
+            value => AssertValue(
+                value,
+                EmbeddedMetadataField.GpsCoordinates,
+                "Keys",
+                "GPSCoordinates",
+                "+34.25-118.5+25.5/",
+                JsonValueKind.String),
+            value => AssertValue(
+                value,
+                EmbeddedMetadataField.CaptureDateTime,
+                "QuickTime",
+                "CreateDate",
+                "2020:01:02 03:04:05",
+                JsonValueKind.String));
+        Assert.Equal(originalContents, File.ReadAllBytes(mediaPath));
+        Assert.Equal(originalLastWriteTime, File.GetLastWriteTimeUtc(mediaPath));
+    }
+
     [Fact]
     public void Read_InvalidJsonReturnsMalformedResult()
     {
@@ -345,6 +402,25 @@ public sealed class ExifToolMetadataReaderTests
         printf '%s' '{standardError}' >&2
         exit {exitCode}
         """;
+
+    private static string SuccessfulVideoScript(string json) =>
+        """
+        #!/bin/sh
+        if [ "$#" -ne 13 ]; then printf 'unexpected argument count' >&2; exit 91; fi
+        if [ "$1" != "-json" ]; then exit 92; fi
+        if [ "$2" != "-G1" ]; then exit 93; fi
+        if [ "$3" != "-s" ]; then exit 94; fi
+        if [ "$4" != "-QuickTime:CreateDate" ]; then exit 95; fi
+        if [ "$5" != "-Keys:CreationDate" ]; then exit 95; fi
+        if [ "$6" != "-UserData:DateTimeOriginal" ]; then exit 95; fi
+        if [ "$7" != "-Keys:ContentCreateDate" ]; then exit 95; fi
+        if [ "$8" != "-ItemList:ContentCreateDate" ]; then exit 95; fi
+        if [ "$9" != "-UserData:ContentCreateDate" ]; then exit 95; fi
+        if [ "${10}" != "-Keys:GPSCoordinates#" ]; then exit 95; fi
+        if [ "${11}" != "-ItemList:GPSCoordinates#" ]; then exit 95; fi
+        if [ "${12}" != "-UserData:GPSCoordinates#" ]; then exit 95; fi
+        """ +
+        $"\nprintf '%s' '{json}'\n";
 
     private sealed class TemporaryFixture : IDisposable
     {

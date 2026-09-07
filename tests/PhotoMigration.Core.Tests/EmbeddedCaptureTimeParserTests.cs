@@ -204,6 +204,47 @@ public sealed class EmbeddedCaptureTimeParserTests
     }
 
     [Fact]
+    public void Parse_QuickTimeDatesPreserveExplicitAndUnknownTimezoneStatus()
+    {
+        var unknownTimezone = Value(
+            EmbeddedMetadataField.CaptureDateTime,
+            "QuickTime",
+            "CreateDate",
+            "2020:01:02 03:04:05");
+        var explicitTimezone = Value(
+            EmbeddedMetadataField.CaptureDateTime,
+            "Keys",
+            "CreationDate",
+            "2020:01:02 03:04:05-07:00");
+
+        var result = EmbeddedCaptureTimeParser.Parse(
+            [unknownTimezone, explicitTimezone]);
+
+        Assert.Collection(
+            result.Candidates,
+            candidate =>
+            {
+                Assert.Same(explicitTimezone, candidate.SourceValue);
+                Assert.Equal(
+                    EmbeddedCaptureTimeOffsetSource.IncludedInDateValue,
+                    candidate.OffsetSource);
+                Assert.Equal(
+                    TimeSpan.FromHours(-7),
+                    candidate.ParsedDateTimeOffset!.Value.Offset);
+            },
+            candidate =>
+            {
+                Assert.Same(unknownTimezone, candidate.SourceValue);
+                Assert.Equal(
+                    EmbeddedCaptureTimeOffsetSource.Unknown,
+                    candidate.OffsetSource);
+                Assert.Equal(DateTimeKind.Unspecified, candidate.ParsedDateTime.Kind);
+                Assert.Null(candidate.ParsedDateTimeOffset);
+            });
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
     public void Parse_NoCaptureTimeValuesReturnsEmptyResult()
     {
         var result = EmbeddedCaptureTimeParser.Parse(

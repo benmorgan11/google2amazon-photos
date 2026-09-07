@@ -8,7 +8,7 @@ public static class ExifToolMetadataReader
 {
     private const int CleanupWaitMilliseconds = 1_000;
 
-    private static readonly HashSet<string> SupportedExtensions = new(
+    private static readonly HashSet<string> ImageExtensions = new(
         StringComparer.OrdinalIgnoreCase)
     {
         ".jpg",
@@ -17,21 +17,31 @@ public static class ExifToolMetadataReader
         ".heif"
     };
 
+    private static readonly HashSet<string> VideoExtensions = new(
+        StringComparer.OrdinalIgnoreCase)
+    {
+        ".mov",
+        ".mp4"
+    };
+
     private static readonly IReadOnlyDictionary<string, EmbeddedMetadataField> FieldsByTag =
         new Dictionary<string, EmbeddedMetadataField>(StringComparer.Ordinal)
         {
             ["DateTimeOriginal"] = EmbeddedMetadataField.CaptureDateTime,
             ["CreateDate"] = EmbeddedMetadataField.CaptureDateTime,
+            ["CreationDate"] = EmbeddedMetadataField.CaptureDateTime,
+            ["ContentCreateDate"] = EmbeddedMetadataField.CaptureDateTime,
             ["OffsetTimeOriginal"] = EmbeddedMetadataField.CaptureTimezoneOffset,
             ["GPSLatitude"] = EmbeddedMetadataField.GpsLatitude,
             ["GPSLatitudeRef"] = EmbeddedMetadataField.GpsLatitudeReference,
             ["GPSLongitude"] = EmbeddedMetadataField.GpsLongitude,
             ["GPSLongitudeRef"] = EmbeddedMetadataField.GpsLongitudeReference,
             ["GPSAltitude"] = EmbeddedMetadataField.GpsAltitude,
-            ["GPSAltitudeRef"] = EmbeddedMetadataField.GpsAltitudeReference
+            ["GPSAltitudeRef"] = EmbeddedMetadataField.GpsAltitudeReference,
+            ["GPSCoordinates"] = EmbeddedMetadataField.GpsCoordinates
         };
 
-    private static readonly string[] RequestedArguments =
+    private static readonly string[] ImageRequestedArguments =
     [
         "-json",
         "-G1",
@@ -50,6 +60,22 @@ public static class ExifToolMetadataReader
         "-XMP:GPSLatitude#",
         "-XMP:GPSLongitude#",
         "-XMP:GPSAltitude#"
+    ];
+
+    private static readonly string[] VideoRequestedArguments =
+    [
+        "-json",
+        "-G1",
+        "-s",
+        "-QuickTime:CreateDate",
+        "-Keys:CreationDate",
+        "-UserData:DateTimeOriginal",
+        "-Keys:ContentCreateDate",
+        "-ItemList:ContentCreateDate",
+        "-UserData:ContentCreateDate",
+        "-Keys:GPSCoordinates#",
+        "-ItemList:GPSCoordinates#",
+        "-UserData:GPSCoordinates#"
     ];
 
     public static readonly TimeSpan DefaultReadTimeout = TimeSpan.FromSeconds(5);
@@ -72,7 +98,9 @@ public static class ExifToolMetadataReader
 
         var absoluteMediaPath = Path.GetFullPath(mediaPath);
         var extension = Path.GetExtension(absoluteMediaPath);
-        if (!SupportedExtensions.Contains(extension))
+        var isImage = ImageExtensions.Contains(extension);
+        var isVideo = VideoExtensions.Contains(extension);
+        if (!isImage && !isVideo)
         {
             return new EmbeddedMetadataUnsupportedMediaResult(
                 absoluteMediaPath,
@@ -88,13 +116,15 @@ public static class ExifToolMetadataReader
         return RunExifTool(
             absoluteMediaPath,
             absoluteExifToolPath,
-            readTimeout);
+            readTimeout,
+            isVideo ? VideoRequestedArguments : ImageRequestedArguments);
     }
 
     private static EmbeddedMetadataReadResult RunExifTool(
         string mediaPath,
         string exifToolExecutablePath,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        IReadOnlyList<string> requestedArguments)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -105,7 +135,7 @@ public static class ExifToolMetadataReader
             CreateNoWindow = true
         };
 
-        foreach (var argument in RequestedArguments)
+        foreach (var argument in requestedArguments)
         {
             startInfo.ArgumentList.Add(argument);
         }

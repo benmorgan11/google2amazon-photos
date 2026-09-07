@@ -99,7 +99,7 @@ public sealed class TakeoutMetadataPlannerTests
     }
 
     [Fact]
-    public void Plan_NonJpegUsesUnsupportedReaderResultWithoutRunningExifTool()
+    public void Plan_UnimplementedVideoFormatUsesUnsupportedReaderResultWithoutRunningExifTool()
     {
         if (!SupportsPosixScripts())
         {
@@ -107,7 +107,7 @@ public sealed class TakeoutMetadataPlannerTests
         }
 
         using var fixture = new PlannerFixture();
-        fixture.WriteTakeout("video.mp4", "media");
+        fixture.WriteTakeout("video.m4v", "media");
 
         var result = TakeoutMetadataPlanner.Plan(
             fixture.TakeoutRootPath,
@@ -121,6 +121,79 @@ public sealed class TakeoutMetadataPlannerTests
             MediaMetadataPlanStatus.EmbeddedMetadataFormatNotSupportedYet,
             plan.Status);
         Assert.Empty(fixture.ReadInvokedMediaPaths());
+    }
+
+    [Fact]
+    public void Plan_MovAndMp4AreReadOnceAndRetainMultipleCaptureDates()
+    {
+        if (!SupportsPosixScripts())
+        {
+            return;
+        }
+
+        using var fixture = new PlannerFixture();
+        fixture.WriteTakeout("A-equivalent.mp4", "media");
+        fixture.WriteTakeout("A-equivalent.mp4.json", "{}");
+        fixture.WriteTakeout("z-conflicting.mov", "media");
+        fixture.WriteTakeout("z-conflicting.mov.json", "{}");
+
+        var result = TakeoutMetadataPlanner.Plan(
+            fixture.TakeoutRootPath,
+            fixture.CreateExifTool());
+
+        Assert.Equal(
+            ["A-equivalent.mp4", "z-conflicting.mov"],
+            result.Items.Select(item => item.MediaEntry.RelativePath));
+        var equivalent = Assert.IsType<SuccessfulMediaMetadataPlan>(
+            result.Items[0].MetadataPlan);
+        Assert.Equal(MediaMetadataPlanStatus.NoMetadataChangesProposed, equivalent.Status);
+        Assert.Equal(2, equivalent.CaptureTimeParseResult.Candidates.Count);
+        Assert.IsType<KeepEmbeddedCaptureTimeDecision>(equivalent.CaptureTimeDecision);
+        var conflicting = Assert.IsType<SuccessfulMediaMetadataPlan>(
+            result.Items[1].MetadataPlan);
+        Assert.Equal(MediaMetadataPlanStatus.ReviewRequired, conflicting.Status);
+        Assert.Equal(2, conflicting.CaptureTimeParseResult.Candidates.Count);
+        Assert.Contains(
+            MediaMetadataPlanReviewReason.CaptureTimeReviewRequired,
+            conflicting.ReviewReasons);
+        Assert.Equal(
+            ["A-equivalent.mp4", "z-conflicting.mov"],
+            fixture.ReadInvokedMediaPaths()
+                .Select(Path.GetFileName)
+                .Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void Plan_InvalidQuickTimeLocationBlocksAutomaticSidecarFallback()
+    {
+        if (!SupportsPosixScripts())
+        {
+            return;
+        }
+
+        using var fixture = new PlannerFixture();
+        fixture.WriteTakeout("invalid-location.mp4", "media");
+        fixture.WriteTakeout(
+            "invalid-location.mp4.json",
+            """
+            { "geoData": { "latitude": 1, "longitude": 2 } }
+            """);
+
+        var result = TakeoutMetadataPlanner.Plan(
+            fixture.TakeoutRootPath,
+            fixture.CreateExifTool());
+
+        var plan = Assert.IsType<SuccessfulMediaMetadataPlan>(
+            Assert.Single(result.Items).MetadataPlan);
+        Assert.Equal(MediaMetadataPlanStatus.ReviewRequired, plan.Status);
+        Assert.IsType<ReviewRequiredLocationDecision>(plan.LocationDecision);
+        Assert.Contains(
+            MediaMetadataPlanReviewReason.EmbeddedGpsParsingIssues,
+            plan.ReviewReasons);
+        Assert.DoesNotContain(
+            plan.LocationDecision.SidecarComparisons,
+            comparison => comparison.Kind == EmbeddedSidecarLocationComparisonKind.Match);
+        Assert.Single(fixture.ReadInvokedMediaPaths());
     }
 
     [Fact]
@@ -170,7 +243,7 @@ public sealed class TakeoutMetadataPlannerTests
         fixture.WriteTakeout("D-ambiguous.jpg", "media");
         fixture.WriteTakeout("D-ambiguous.jpg.json", "{}");
         fixture.WriteTakeout("D-ambiguous.jpg.supplemental-metadata.json", "{}");
-        fixture.WriteTakeout("E-video.mp4", "media");
+        fixture.WriteTakeout("E-video.m4v", "media");
         fixture.WriteTakeout("F-failure.jpg", "media");
         fixture.WriteTakeout("G-review.jpg", "media");
         fixture.WriteTakeout(
@@ -321,9 +394,21 @@ public sealed class TakeoutMetadataPlannerTests
             var script = "#!/bin/sh\n"
                 + $"log_path='{CallLogPath}'\n"
                 + """
-                media="${18}"
+                media=''
+                for argument in "$@"; do
+                  media="$argument"
+                done
                 printf '%s\n' "$media" >> "$log_path"
                 case "$media" in
+                  *equivalent.mp4)
+                    printf '%s' '[{"Keys:CreationDate":"2020:01:02 03:04:05","ItemList:ContentCreateDate":"2020:01:02 03:04:05"}]'
+                    ;;
+                  *conflicting.mov)
+                    printf '%s' '[{"Keys:CreationDate":"2020:01:02 03:04:05","ItemList:ContentCreateDate":"2020:01:02 03:04:06"}]'
+                    ;;
+                  *invalid-location.mp4)
+                    printf '%s' '[{"Keys:GPSCoordinates":"+91-118/"}]'
+                    ;;
                   *failure.jpg)
                     printf '%s' 'synthetic failure' >&2
                     exit 9

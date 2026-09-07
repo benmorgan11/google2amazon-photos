@@ -202,6 +202,50 @@ public sealed class EmbeddedLocationBuilderTests
     }
 
     [Fact]
+    public void Build_CombinedQuickTimeLocationsRemainAtomicWithinOneGroup()
+    {
+        var firstSource = new EmbeddedMetadataValue(
+            EmbeddedMetadataField.GpsCoordinates,
+            "Keys",
+            "GPSCoordinates",
+            "+1+2/",
+            JsonValueKind.String);
+        var secondSource = new EmbeddedMetadataValue(
+            EmbeddedMetadataField.GpsCoordinates,
+            "Keys",
+            "GPSCoordinates",
+            "+3+4/",
+            JsonValueKind.String);
+        var firstLatitude = CombinedCandidate(
+            firstSource,
+            EmbeddedMetadataField.GpsLatitude,
+            1);
+        var firstLongitude = CombinedCandidate(
+            firstSource,
+            EmbeddedMetadataField.GpsLongitude,
+            2);
+        var secondLatitude = CombinedCandidate(
+            secondSource,
+            EmbeddedMetadataField.GpsLatitude,
+            3);
+        var secondLongitude = CombinedCandidate(
+            secondSource,
+            EmbeddedMetadataField.GpsLongitude,
+            4);
+
+        var result = EmbeddedLocationBuilder.Build(
+            [secondLongitude, firstLatitude, secondLatitude, firstLongitude]);
+
+        Assert.Equal(2, result.Candidates.Count);
+        Assert.Equal(
+            [(1d, 2d), (3d, 4d)],
+            result.Candidates.Select(location => (
+                location.Latitude.ParsedValue,
+                location.Longitude.ParsedValue)));
+        Assert.Empty(result.Issues);
+    }
+
+    [Fact]
     public void Build_ResultsAreDeterministicForShuffledGroups()
     {
         var xmpLatitude = Candidate(EmbeddedMetadataField.GpsLatitude, "XMP-exif", 3, "3");
@@ -265,6 +309,15 @@ public sealed class EmbeddedLocationBuilderTests
 
         return new EmbeddedGpsCandidate(source, parsedValue, reference);
     }
+
+    private static EmbeddedGpsCandidate CombinedCandidate(
+        EmbeddedMetadataValue source,
+        EmbeddedMetadataField semanticField,
+        double parsedValue) =>
+        new(source, parsedValue, null)
+        {
+            SemanticField = semanticField
+        };
 
     private static string TagName(EmbeddedMetadataField field) =>
         field switch

@@ -11,6 +11,7 @@ public static class EmbeddedLocationBuilder
             .OrderBy(value => value.SourceValue.GroupName, StringComparer.Ordinal)
             .ThenBy(value => value.SourceValue.TagName, StringComparer.Ordinal)
             .ThenBy(value => value.SourceValue.RawValue, StringComparer.Ordinal)
+            .ThenBy(value => value.SemanticField)
             .ThenBy(value => value.ReferenceValue?.GroupName, StringComparer.Ordinal)
             .ThenBy(value => value.ReferenceValue?.TagName, StringComparer.Ordinal)
             .ThenBy(value => value.ReferenceValue?.RawValue, StringComparer.Ordinal)
@@ -23,66 +24,29 @@ public static class EmbeddedLocationBuilder
                      value => value.SourceValue.GroupName,
                      StringComparer.Ordinal))
         {
-            var latitudes = ValuesFor(group, EmbeddedMetadataField.GpsLatitude);
-            var longitudes = ValuesFor(group, EmbeddedMetadataField.GpsLongitude);
-            var altitudes = ValuesFor(group, EmbeddedMetadataField.GpsAltitude);
-            var hasCoordinatePair = latitudes.Count > 0 && longitudes.Count > 0;
-
-            if (latitudes.Count > 0 && longitudes.Count == 0)
+            foreach (var combinedCoordinates in group
+                         .Where(IsCombinedCoordinate)
+                         .GroupBy(
+                             value => value.SourceValue,
+                             ReferenceEqualityComparer.Instance))
             {
-                issues.Add(new EmbeddedLocationIssue(
-                    EmbeddedLocationIssueKind.LatitudeWithoutLongitude,
+                BuildLocations(
                     group.Key,
-                    latitudes,
-                    "The metadata group has latitude values but no longitude values."));
+                    combinedCoordinates,
+                    candidates,
+                    issues);
             }
 
-            if (longitudes.Count > 0 && latitudes.Count == 0)
+            var individualValues = group
+                .Where(value => !IsCombinedCoordinate(value))
+                .ToList();
+            if (individualValues.Count > 0)
             {
-                issues.Add(new EmbeddedLocationIssue(
-                    EmbeddedLocationIssueKind.LongitudeWithoutLatitude,
+                BuildLocations(
                     group.Key,
-                    longitudes,
-                    "The metadata group has longitude values but no latitude values."));
-            }
-
-            if (altitudes.Count > 0 && !hasCoordinatePair)
-            {
-                issues.Add(new EmbeddedLocationIssue(
-                    EmbeddedLocationIssueKind.AltitudeWithoutCoordinatePair,
-                    group.Key,
-                    altitudes,
-                    "The metadata group has altitude values but no complete coordinate pair."));
-            }
-
-            if (!hasCoordinatePair)
-            {
-                continue;
-            }
-
-            foreach (var latitude in latitudes)
-            {
-                foreach (var longitude in longitudes)
-                {
-                    if (altitudes.Count == 0)
-                    {
-                        candidates.Add(new EmbeddedLocationCandidate(
-                            group.Key,
-                            latitude,
-                            longitude,
-                            null));
-                        continue;
-                    }
-
-                    foreach (var altitude in altitudes)
-                    {
-                        candidates.Add(new EmbeddedLocationCandidate(
-                            group.Key,
-                            latitude,
-                            longitude,
-                            altitude));
-                    }
-                }
+                    individualValues,
+                    candidates,
+                    issues);
             }
         }
 
@@ -95,11 +59,83 @@ public static class EmbeddedLocationBuilder
                 .AsReadOnly());
     }
 
+    private static void BuildLocations(
+        string groupName,
+        IEnumerable<EmbeddedGpsCandidate> values,
+        ICollection<EmbeddedLocationCandidate> candidates,
+        ICollection<EmbeddedLocationIssue> issues)
+    {
+        var latitudes = ValuesFor(values, EmbeddedMetadataField.GpsLatitude);
+        var longitudes = ValuesFor(values, EmbeddedMetadataField.GpsLongitude);
+        var altitudes = ValuesFor(values, EmbeddedMetadataField.GpsAltitude);
+        var hasCoordinatePair = latitudes.Count > 0 && longitudes.Count > 0;
+
+        if (latitudes.Count > 0 && longitudes.Count == 0)
+        {
+            issues.Add(new EmbeddedLocationIssue(
+                EmbeddedLocationIssueKind.LatitudeWithoutLongitude,
+                groupName,
+                latitudes,
+                "The metadata group has latitude values but no longitude values."));
+        }
+
+        if (longitudes.Count > 0 && latitudes.Count == 0)
+        {
+            issues.Add(new EmbeddedLocationIssue(
+                EmbeddedLocationIssueKind.LongitudeWithoutLatitude,
+                groupName,
+                longitudes,
+                "The metadata group has longitude values but no latitude values."));
+        }
+
+        if (altitudes.Count > 0 && !hasCoordinatePair)
+        {
+            issues.Add(new EmbeddedLocationIssue(
+                EmbeddedLocationIssueKind.AltitudeWithoutCoordinatePair,
+                groupName,
+                altitudes,
+                "The metadata group has altitude values but no complete coordinate pair."));
+        }
+
+        if (!hasCoordinatePair)
+        {
+            return;
+        }
+
+        foreach (var latitude in latitudes)
+        {
+            foreach (var longitude in longitudes)
+            {
+                if (altitudes.Count == 0)
+                {
+                    candidates.Add(new EmbeddedLocationCandidate(
+                        groupName,
+                        latitude,
+                        longitude,
+                        null));
+                    continue;
+                }
+
+                foreach (var altitude in altitudes)
+                {
+                    candidates.Add(new EmbeddedLocationCandidate(
+                        groupName,
+                        latitude,
+                        longitude,
+                        altitude));
+                }
+            }
+        }
+    }
+
     private static IReadOnlyList<EmbeddedGpsCandidate> ValuesFor(
         IEnumerable<EmbeddedGpsCandidate> values,
         EmbeddedMetadataField field) =>
         values
-            .Where(value => value.SourceValue.Field == field)
+            .Where(value => value.SemanticField == field)
             .ToList()
             .AsReadOnly();
+
+    private static bool IsCombinedCoordinate(EmbeddedGpsCandidate value) =>
+        value.SourceValue.Field == EmbeddedMetadataField.GpsCoordinates;
 }
