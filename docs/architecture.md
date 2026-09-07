@@ -284,3 +284,32 @@ Amazon Photos compatibility. All other read failures mean embedded metadata was
 unavailable, and the planner does not attempt a sidecar fallback because the
 existing metadata could not be checked safely. This layer performs no filesystem
 access, tool execution, copying, hashing, metadata writing, or CLI presentation.
+
+## Takeout metadata planning
+
+Core can create a read-only library planning result from an extracted Takeout
+root and an explicitly supplied ExifTool executable path. The service first runs
+the complete `TakeoutAnalyzer`; an inventory or analyzer failure is propagated
+before any partial planning result can be returned. It then calls
+`ExifToolMetadataReader` once for each analyzed photo or video candidate and
+passes that typed read outcome, together with the applicable sidecar metadata,
+to `MediaMetadataPlanBuilder`. ExifTool discovery remains the caller's
+responsibility.
+
+Every media entry appears once in ordinal relative-path order. Typed sidecar
+states retain the original matched, unmatched, invalid, or ambiguous analyzer
+result. A valid match supplies its parsed sidecar metadata. The other three
+states use an empty metadata value, so invalid JSON and competing sidecars cannot
+influence a plan; ambiguous candidates are never guessed. Unsupported reader
+formats and other typed reader failures remain per-item outcomes and do not stop
+planning later media.
+
+The result retains the complete `TakeoutAnalysisResult`, including unused JSON
+candidates and `Other` files. Summary counts are derived from the final immutable
+item list for sidecar states and metadata-plan statuses. Media paths are rebuilt
+from inventory-relative paths, checked to remain within the analyzed root, and
+made absolute before being passed to the reader.
+
+This service does not detect ExifTool, add format support, create reports or
+output directories, copy or rename files, write metadata, or provide CLI
+presentation. Source media and sidecars remain unchanged.
