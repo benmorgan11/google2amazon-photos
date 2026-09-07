@@ -142,6 +142,56 @@ public sealed class ExifToolMetadataReaderTests
         Assert.Empty(result.StandardError);
     }
 
+    [Theory]
+    [InlineData("photos with spaces/photo.heic")]
+    [InlineData("photos with spaces/photo.HeIf")]
+    public void Read_HeicAndHeifUseExistingSelectedTagFlowWithoutChangingSource(
+        string relativePath)
+    {
+        if (!SupportsPosixScripts())
+        {
+            return;
+        }
+
+        using var fixture = new TemporaryFixture();
+        var mediaPath = fixture.WriteMedia(relativePath, [1, 2, 3, 4]);
+        File.SetLastWriteTimeUtc(mediaPath, DateTime.UtcNow.AddDays(-2));
+        var originalContents = File.ReadAllBytes(mediaPath);
+        var originalLastWriteTime = File.GetLastWriteTimeUtc(mediaPath);
+        var executablePath = fixture.CreateExecutable(
+            "tools with spaces/fake exiftool",
+            SuccessfulScript(
+                """
+                [{
+                  "ExifIFD:DateTimeOriginal": "2020:01:02 03:04:05",
+                  "GPS:GPSLatitude": 34.25
+                }]
+                """));
+
+        var result = Assert.IsType<EmbeddedMetadataReadSuccessResult>(
+            ExifToolMetadataReader.Read(mediaPath, executablePath));
+
+        Assert.Equal(Path.GetFullPath(mediaPath), result.MediaPath);
+        Assert.Collection(
+            result.Values,
+            value => AssertValue(
+                value,
+                EmbeddedMetadataField.CaptureDateTime,
+                "ExifIFD",
+                "DateTimeOriginal",
+                "2020:01:02 03:04:05",
+                JsonValueKind.String),
+            value => AssertValue(
+                value,
+                EmbeddedMetadataField.GpsLatitude,
+                "GPS",
+                "GPSLatitude",
+                "34.25",
+                JsonValueKind.Number));
+        Assert.Equal(originalContents, File.ReadAllBytes(mediaPath));
+        Assert.Equal(originalLastWriteTime, File.GetLastWriteTimeUtc(mediaPath));
+    }
+
     [Fact]
     public void Read_InvalidJsonReturnsMalformedResult()
     {
