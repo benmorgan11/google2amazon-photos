@@ -7,7 +7,9 @@ public static class CliApplication
     private const string Usage =
         "Usage: PhotoMigration.Cli inventory <folder>" +
         "\n       PhotoMigration.Cli analyze <folder>" +
-        "\n       PhotoMigration.Cli check-exiftool [--path <executable-path>]";
+        "\n       PhotoMigration.Cli check-exiftool [--path <executable-path>]" +
+        "\n       PhotoMigration.Cli plan <takeout-folder> " +
+        "[--exiftool <executable-path>]";
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
@@ -28,6 +30,7 @@ public static class CliApplication
                 "inventory" when args.Length == 2 => RunInventory(args[1], output),
                 "analyze" when args.Length == 2 => RunAnalysis(args[1], output),
                 "check-exiftool" => RunExifToolCheck(args, output, error),
+                "plan" => RunPlan(args, output, error),
                 _ => WriteUsageError(error)
             };
         }
@@ -35,7 +38,8 @@ public static class CliApplication
                                           or DirectoryNotFoundException
                                           or InventoryTraversalException
                                           or PathTooLongException
-                                          or NotSupportedException)
+                                          or NotSupportedException
+                                          or InvalidOperationException)
         {
             error.WriteLine($"Error: {exception.Message}");
             return 1;
@@ -65,9 +69,215 @@ public static class CliApplication
         }
 
         var result = ExifToolDetector.Detect(explicitExecutablePath);
-        return result switch
+        return result is ExifToolFoundResult found
+            ? WriteExifToolFound(found, output)
+            : WriteExifToolDetectionError(result, error);
+    }
+
+    private static int RunPlan(
+        string[] args,
+        TextWriter output,
+        TextWriter error)
+    {
+        if (!TryParsePlanArguments(
+                args,
+                out var takeoutFolder,
+                out var explicitExifToolPath))
         {
-            ExifToolFoundResult found => WriteExifToolFound(found, output),
+            return WriteUsageError(error);
+        }
+
+        var detectionResult = ExifToolDetector.Detect(explicitExifToolPath);
+        if (detectionResult is not ExifToolFoundResult found)
+        {
+            return WriteExifToolDetectionError(detectionResult, error);
+        }
+
+        var planningResult = TakeoutMetadataPlanner.Plan(
+            takeoutFolder!,
+            found.ExecutablePath);
+        WritePlanningSummary(planningResult, output);
+        WritePlanningAttentionItems(planningResult.Items, output);
+
+        output.WriteLine();
+        output.WriteLine("Planning completed read-only; no files were changed.");
+
+        return planningResult.Items.Any(NeedsPlanningAttention) ? 2 : 0;
+    }
+
+    private static bool TryParsePlanArguments(
+        string[] args,
+        out string? takeoutFolder,
+        out string? explicitExifToolPath)
+    {
+        takeoutFolder = null;
+        explicitExifToolPath = null;
+
+        if (args.Length == 2 && !string.IsNullOrWhiteSpace(args[1]))
+        {
+            takeoutFolder = args[1];
+            return true;
+        }
+
+        if (args.Length == 4
+            && !string.IsNullOrWhiteSpace(args[1])
+            && string.Equals(args[2], "--exiftool", StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(args[3]))
+        {
+            takeoutFolder = args[1];
+            explicitExifToolPath = args[3];
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void WritePlanningSummary(
+        TakeoutMetadataPlanningResult result,
+        TextWriter output)
+    {
+        output.WriteLine("Planning summary:");
+        output.WriteLine($"Total media: {result.TotalMediaCount}");
+        output.WriteLine($"Matched sidecars: {result.MatchedSidecarCount}");
+        output.WriteLine($"Unmatched media: {result.UnmatchedMediaCount}");
+        output.WriteLine($"Invalid sidecars: {result.InvalidSidecarCount}");
+        output.WriteLine($"Ambiguous sidecars: {result.AmbiguousSidecarCount}");
+        output.WriteLine(
+            $"No metadata changes proposed: {result.NoChangeMetadataPlanCount}");
+        output.WriteLine(
+            $"Safe metadata changes proposed: {result.SafeChangeMetadataPlanCount}");
+        output.WriteLine(
+            $"Review required: {result.ReviewRequiredMetadataPlanCount}");
+        output.WriteLine(
+            $"Embedded metadata unavailable: {result.EmbeddedMetadataUnavailableCount}");
+        output.WriteLine(
+            "Embedded formats not supported yet: " +
+            result.EmbeddedFormatNotSupportedYetCount);
+        output.WriteLine(
+            $"Unused JSON candidates: {result.AnalysisResult.UnusedJsonCandidates.Count}");
+        output.WriteLine($"Other files: {result.AnalysisResult.OtherFiles.Count}");
+    }
+
+    private static void WritePlanningAttentionItems(
+        IReadOnlyList<TakeoutMetadataPlanningItem> items,
+        TextWriter output)
+    {
+        var attentionItems = items.Where(NeedsPlanningAttention).ToList();
+        if (attentionItems.Count == 0)
+        {
+            return;
+        }
+
+        output.WriteLine();
+        output.WriteLine("Items needing attention:");
+        foreach (var item in attentionItems)
+        {
+            output.WriteLine($"  {item.MediaEntry.RelativePath}");
+            WriteSidecarAttention(item.SidecarState, output);
+            WriteMetadataPlanAttention(item.MetadataPlan, output);
+        }
+    }
+
+    private static bool NeedsPlanningAttention(TakeoutMetadataPlanningItem item) =>
+        item.SidecarState is UnmatchedTakeoutSidecarState
+            or InvalidTakeoutSidecarState
+            or AmbiguousTakeoutSidecarState
+        || item.MetadataPlan.Status is MediaMetadataPlanStatus.ReviewRequired
+            or MediaMetadataPlanStatus.EmbeddedMetadataUnavailable
+            or MediaMetadataPlanStatus.EmbeddedMetadataFormatNotSupportedYet;
+
+    private static void WriteSidecarAttention(
+        TakeoutPlanningSidecarState state,
+        TextWriter output)
+    {
+        switch (state)
+        {
+            case UnmatchedTakeoutSidecarState:
+                output.WriteLine("    Sidecar: no matching sidecar.");
+                break;
+            case InvalidTakeoutSidecarState invalid:
+                output.WriteLine(
+                    $"    Sidecar: invalid '{invalid.AnalysisResult.SidecarEntry.RelativePath}' " +
+                    $"[{invalid.AnalysisResult.MatchRule}].");
+                break;
+            case AmbiguousTakeoutSidecarState ambiguous:
+                output.WriteLine("    Sidecar: ambiguous candidates.");
+                foreach (var candidate in ambiguous.AnalysisResult.Candidates)
+                {
+                    output.WriteLine(
+                        $"      {candidate.SidecarEntry.RelativePath} [{candidate.Rule}]");
+                }
+
+                break;
+        }
+    }
+
+    private static void WriteMetadataPlanAttention(
+        MediaMetadataPlan plan,
+        TextWriter output)
+    {
+        switch (plan)
+        {
+            case SuccessfulMediaMetadataPlan successful
+                when successful.Status == MediaMetadataPlanStatus.ReviewRequired:
+                foreach (var reason in successful.ReviewReasons)
+                {
+                    output.WriteLine($"    Metadata: {DescribeReviewReason(reason)}");
+                }
+
+                break;
+            case UnsupportedEmbeddedMetadataFormatPlan unsupported:
+                output.WriteLine(
+                    "    Embedded metadata: reader not implemented yet for format " +
+                    $"'{DisplayExtension(unsupported.UnsupportedRead.Extension)}'.");
+                break;
+            case MissingMediaMetadataPlan:
+                output.WriteLine("    Embedded metadata: media file was unavailable.");
+                break;
+            case ExifToolFailureMetadataPlan:
+                output.WriteLine("    Embedded metadata: ExifTool could not read the file.");
+                break;
+            case EmbeddedMetadataTimeoutPlan:
+                output.WriteLine("    Embedded metadata: ExifTool read timed out.");
+                break;
+            case MalformedEmbeddedMetadataJsonPlan:
+                output.WriteLine("    Embedded metadata: ExifTool returned malformed JSON.");
+                break;
+        }
+    }
+
+    private static string DescribeReviewReason(MediaMetadataPlanReviewReason reason) =>
+        reason switch
+        {
+            MediaMetadataPlanReviewReason.LowConfidenceCreationTimeFallback =>
+                "sidecar creation time is only a low-confidence fallback.",
+            MediaMetadataPlanReviewReason.CaptureTimeReviewRequired =>
+                "capture-time candidates require review.",
+            MediaMetadataPlanReviewReason.CaptureTimeConflict =>
+                "embedded and sidecar capture times conflict.",
+            MediaMetadataPlanReviewReason.EmbeddedCaptureTimeParsingIssues =>
+                "embedded capture-time values could not all be parsed.",
+            MediaMetadataPlanReviewReason.LocationReviewRequired =>
+                "location candidates require review.",
+            MediaMetadataPlanReviewReason.LocationConflict =>
+                "embedded and sidecar locations conflict.",
+            MediaMetadataPlanReviewReason.EmbeddedGpsParsingIssues =>
+                "embedded GPS values could not all be parsed.",
+            MediaMetadataPlanReviewReason.EmbeddedLocationBuildingIssues =>
+                "embedded GPS values did not form complete locations.",
+            MediaMetadataPlanReviewReason.ExifToolDiagnostics =>
+                "ExifTool reported diagnostics.",
+            _ => "metadata requires review."
+        };
+
+    private static string DisplayExtension(string extension) =>
+        string.IsNullOrEmpty(extension) ? "(none)" : extension;
+
+    private static int WriteExifToolDetectionError(
+        ExifToolDetectionResult result,
+        TextWriter error) =>
+        result switch
+        {
             ExifToolNotFoundResult notFound => WriteError(error, notFound.Message),
             ExifToolUnableToRunResult unableToRun => WriteError(
                 error,
@@ -78,7 +288,6 @@ public static class CliApplication
             ExifToolVersionCheckTimedOutResult timedOut => WriteTimeoutError(error, timedOut),
             _ => WriteError(error, "ExifTool detection returned an unsupported result.")
         };
-    }
 
     private static int WriteExifToolFound(ExifToolFoundResult found, TextWriter output)
     {
