@@ -208,3 +208,26 @@ but no latitude, or altitude without a complete coordinate pair. Results use
 ordinal group and provenance ordering. This stage does not compare values,
 apply tolerances or metadata precedence, compare sidecars, or read or write
 files.
+
+## Capture-time decisions
+
+Core can make a read-only capture-time decision from an embedded capture-time
+parse result and parsed Takeout sidecar metadata. Valid embedded candidates are
+always preserved. Equivalent zoned candidates must represent the same instant;
+equivalent unzoned candidates must have the same unspecified wall-clock value.
+Mixed timezone knowledge or non-equivalent embedded candidates requires review,
+and no tag is preferred by group or name.
+
+Each embedded candidate is compared only with sidecar `PhotoTakenTime`. Zoned
+values are compared as instants at whole-second precision, while unzoned values
+remain incomparable rather than receiving a machine-local timezone. Match,
+conflict, unknown-timezone, and no-sidecar-time outcomes remain explicit. A
+sidecar conflict never replaces valid embedded metadata.
+
+When no valid embedded candidate or parsing issue exists, sidecar
+`PhotoTakenTime` may be proposed. Sidecar `CreationTime` is used only as a typed
+low-confidence fallback. Both are recorded as instants whose original local
+timezone is unknown. Embedded parsing issues without a remaining valid value
+require review; otherwise the result reports capture time as missing. The layer
+does not access files, run ExifTool, decide locations, compare other metadata,
+or write output.
