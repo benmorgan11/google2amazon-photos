@@ -191,3 +191,20 @@ reference problems remain typed issues in deterministic ordinal order.
 
 The parser does not select a preferred location, combine coordinates, compare
 sidecar values, apply metadata precedence, run tools, or read or write files.
+
+## Embedded location candidates
+
+Core can build complete location candidates from already parsed embedded GPS
+values without running tools or accessing files. Latitude and longitude are
+combined only within the same ExifTool family-1 group. Altitude is optional and
+is attached only from that same group. Each completed location retains the
+parsed latitude, longitude, optional altitude, and all source and reference
+provenance held by those GPS candidates. Valid `0, 0` coordinates remain valid.
+
+When a group contains multiple values, the builder returns every latitude,
+longitude, and altitude combination without selecting or deduplicating one.
+Typed issues retain groups and values with latitude but no longitude, longitude
+but no latitude, or altitude without a complete coordinate pair. Results use
+ordinal group and provenance ordering. This stage does not compare values,
+apply tolerances or metadata precedence, compare sidecars, or read or write
+files.
