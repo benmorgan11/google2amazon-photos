@@ -154,3 +154,19 @@ diagnostics are retained without automatic printing. Process execution and
 cleanup are bounded, and the operation never writes media, metadata, backups,
 copies, or timestamps. Other media formats, analysis integration, metadata
 precedence, writing, and CLI presentation remain future work.
+
+## Embedded capture-time parsing
+
+Core can parse the capture-time values already returned by the embedded metadata
+reader without starting ExifTool or accessing files. It retains every date
+candidate and its original semantic field, ExifTool group, tag, and raw text.
+Supported values use ExifTool's `yyyy:MM:dd HH:mm:ss` form, optional fractional
+seconds, and optional `Z`, `+HH:MM`, `-HH:MM`, `+HHMM`, or `-HHMM` offsets.
+
+An `ExifIFD:OffsetTimeOriginal` value is combined only with an offset-free
+`ExifIFD:DateTimeOriginal`. Offset provenance distinguishes an offset embedded
+in the date, one supplied by that companion tag, and an unknown offset. Dates
+without offsets remain `DateTimeKind.Unspecified`; offset-bearing values also
+produce a `DateTimeOffset`. Invalid dates and offsets remain typed issues.
+Results use deterministic ordinal ordering and do not choose metadata
+precedence, compare sidecars, parse GPS, run tools, or read or write files.
