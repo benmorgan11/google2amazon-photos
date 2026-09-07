@@ -124,3 +124,16 @@ details only for invalid, unmatched, and ambiguous media. Those attention cases
 produce exit code `2`; unused JSON and `Other` files remain reportable counts and
 do not affect success. Argument and operational failures produce exit code `1`.
 The command creates no output files or saved reports.
+
+## ExifTool discovery
+
+Core can locate and validate an externally installed ExifTool without opening
+media or sidecar files. An explicit executable path is authoritative; otherwise,
+the detector checks nonempty `PATH` directories in order and then the standard
+Intel macOS location. Candidate paths are absolute and deduplicated.
+
+Validation starts the first existing candidate directly with only `-ver`, using
+redirected output and no shell. Typed results distinguish success, absence,
+execution failure, invalid version output, and timeout. A timed-out process is
+terminated. Installation, metadata reading or writing, and CLI integration are
+outside this boundary.
