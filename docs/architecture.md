@@ -144,7 +144,10 @@ Installation and metadata reading or writing remain outside this boundary.
 Core can read planning metadata from one explicitly supplied `.jpg` or `.jpeg`
 file by starting an explicitly supplied ExifTool executable directly. The reader
 requests grouped JSON for EXIF and XMP capture dates, the EXIF original-time
-offset, and EXIF/XMP GPS latitude, longitude, and altitude. It preserves each
+offset, and EXIF/XMP GPS latitude, longitude, and altitude. Individual GPS tags
+use ExifTool's `#` suffix for machine-readable values, and EXIF latitude,
+longitude, and altitude references are requested the same way. The reader does
+not use global `-n`, so capture-time formatting is unchanged. It preserves each
 returned value's semantic field, ExifTool group and tag, JSON kind, and raw text;
 it does not select a preferred date or location.
 
@@ -170,3 +173,21 @@ without offsets remain `DateTimeKind.Unspecified`; offset-bearing values also
 produce a `DateTimeOffset`. Invalid dates and offsets remain typed issues.
 Results use deterministic ordinal ordering and do not choose metadata
 precedence, compare sidecars, parse GPS, run tools, or read or write files.
+
+## Embedded GPS parsing
+
+Core can parse the GPS values already returned by the embedded metadata reader
+without starting ExifTool or accessing files. Invariant-culture finite numbers
+are accepted; latitude is limited to -90 through 90 and longitude to -180
+through 180, with boundary and zero values retained.
+
+EXIF values in the `GPS` family-1 group require their corresponding reference
+tag. `N`, `S`, `E`, and `W` determine coordinate signs, while altitude reference
+`0` means above sea level and `1` means below. Missing, invalid, or conflicting
+references do not produce guessed values. Signed XMP values are retained without
+using EXIF references. Every candidate keeps its source value and any reference
+used as provenance; malformed numbers, non-finite values, range failures, and
+reference problems remain typed issues in deterministic ordinal order.
+
+The parser does not select a preferred location, combine coordinates, compare
+sidecar values, apply metadata precedence, run tools, or read or write files.
