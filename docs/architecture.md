@@ -138,3 +138,19 @@ execution failure, invalid version output, and timeout. A timed-out process is
 terminated. The CLI exposes this check through `check-exiftool`, with an optional
 authoritative `--path`; it prints only the detected version and executable path.
 Installation and metadata reading or writing remain outside this boundary.
+
+## JPEG embedded metadata reading
+
+Core can read planning metadata from one explicitly supplied `.jpg` or `.jpeg`
+file by starting an explicitly supplied ExifTool executable directly. The reader
+requests grouped JSON for EXIF and XMP capture dates, the EXIF original-time
+offset, and EXIF/XMP GPS latitude, longitude, and altitude. It preserves each
+returned value's semantic field, ExifTool group and tag, JSON kind, and raw text;
+it does not select a preferred date or location.
+
+Typed outcomes distinguish success, unsupported media, missing media, ExifTool
+failure, timeout, and malformed JSON. Standard error and JSON warning or error
+diagnostics are retained without automatic printing. Process execution and
+cleanup are bounded, and the operation never writes media, metadata, backups,
+copies, or timestamps. Other media formats, analysis integration, metadata
+precedence, writing, and CLI presentation remain future work.
