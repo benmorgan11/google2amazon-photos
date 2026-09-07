@@ -28,9 +28,13 @@ public sealed class ExifToolMetadataReaderTests
                   "SourceFile": "ignored.jpg",
                   "ExifIFD:DateTimeOriginal": "2020:01:02 03:04:05",
                   "ExifIFD:OffsetTimeOriginal": "-07:00",
-                  "XMP-exif:GPSLatitude": 34.25,
-                  "GPS:GPSLongitude": "118 deg 15 min 0 sec W",
+                  "XMP-exif:GPSLatitude": -34.25,
+                  "GPS:GPSLatitude": 34.25,
+                  "GPS:GPSLatitudeRef": "N",
+                  "GPS:GPSLongitude": 118.25,
+                  "GPS:GPSLongitudeRef": "W",
                   "GPS:GPSAltitude": 123.5,
+                  "GPS:GPSAltitudeRef": 0,
                   "Warning": "synthetic warning",
                   "Error": "synthetic diagnostic"
                 }]
@@ -67,17 +71,45 @@ public sealed class ExifToolMetadataReaderTests
                 JsonValueKind.Number),
             value => AssertValue(
                 value,
+                EmbeddedMetadataField.GpsAltitudeReference,
+                "GPS",
+                "GPSAltitudeRef",
+                "0",
+                JsonValueKind.Number),
+            value => AssertValue(
+                value,
+                EmbeddedMetadataField.GpsLatitude,
+                "GPS",
+                "GPSLatitude",
+                "34.25",
+                JsonValueKind.Number),
+            value => AssertValue(
+                value,
+                EmbeddedMetadataField.GpsLatitudeReference,
+                "GPS",
+                "GPSLatitudeRef",
+                "N",
+                JsonValueKind.String),
+            value => AssertValue(
+                value,
                 EmbeddedMetadataField.GpsLongitude,
                 "GPS",
                 "GPSLongitude",
-                "118 deg 15 min 0 sec W",
+                "118.25",
+                JsonValueKind.Number),
+            value => AssertValue(
+                value,
+                EmbeddedMetadataField.GpsLongitudeReference,
+                "GPS",
+                "GPSLongitudeRef",
+                "W",
                 JsonValueKind.String),
             value => AssertValue(
                 value,
                 EmbeddedMetadataField.GpsLatitude,
                 "XMP-exif",
                 "GPSLatitude",
-                "34.25",
+                "-34.25",
                 JsonValueKind.Number));
         Assert.Equal(["synthetic warning"], result.Warnings);
         Assert.Equal(["synthetic diagnostic"], result.Errors);
@@ -231,7 +263,7 @@ public sealed class ExifToolMetadataReaderTests
     private static string SuccessfulScript(string json, string standardError = "") =>
         """
         #!/bin/sh
-        if [ "$#" -ne 15 ]; then printf 'unexpected argument count' >&2; exit 91; fi
+        if [ "$#" -ne 18 ]; then printf 'unexpected argument count' >&2; exit 91; fi
         if [ "$1" != "-json" ]; then printf 'missing -json' >&2; exit 92; fi
         if [ "$2" != "-G1" ]; then printf 'missing -G1' >&2; exit 93; fi
         if [ "$3" != "-s" ]; then printf 'missing -s' >&2; exit 94; fi
@@ -240,12 +272,15 @@ public sealed class ExifToolMetadataReaderTests
         if [ "$6" != "-XMP:DateTimeOriginal" ]; then exit 95; fi
         if [ "$7" != "-XMP:CreateDate" ]; then exit 95; fi
         if [ "$8" != "-EXIF:OffsetTimeOriginal" ]; then exit 95; fi
-        if [ "$9" != "-EXIF:GPSLatitude" ]; then exit 95; fi
-        if [ "${10}" != "-EXIF:GPSLongitude" ]; then exit 95; fi
-        if [ "${11}" != "-EXIF:GPSAltitude" ]; then exit 95; fi
-        if [ "${12}" != "-XMP:GPSLatitude" ]; then exit 95; fi
-        if [ "${13}" != "-XMP:GPSLongitude" ]; then exit 95; fi
-        if [ "${14}" != "-XMP:GPSAltitude" ]; then exit 95; fi
+        if [ "$9" != "-EXIF:GPSLatitude#" ]; then exit 95; fi
+        if [ "${10}" != "-EXIF:GPSLatitudeRef#" ]; then exit 95; fi
+        if [ "${11}" != "-EXIF:GPSLongitude#" ]; then exit 95; fi
+        if [ "${12}" != "-EXIF:GPSLongitudeRef#" ]; then exit 95; fi
+        if [ "${13}" != "-EXIF:GPSAltitude#" ]; then exit 95; fi
+        if [ "${14}" != "-EXIF:GPSAltitudeRef#" ]; then exit 95; fi
+        if [ "${15}" != "-XMP:GPSLatitude#" ]; then exit 95; fi
+        if [ "${16}" != "-XMP:GPSLongitude#" ]; then exit 95; fi
+        if [ "${17}" != "-XMP:GPSAltitude#" ]; then exit 95; fi
         """ +
         $"\nprintf '%s' '{json}'\nprintf '%s' '{standardError}' >&2\n";
 

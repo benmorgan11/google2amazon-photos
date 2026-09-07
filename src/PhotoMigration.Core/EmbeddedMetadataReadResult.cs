@@ -7,8 +7,11 @@ public enum EmbeddedMetadataField
     CaptureDateTime,
     CaptureTimezoneOffset,
     GpsLatitude,
+    GpsLatitudeReference,
     GpsLongitude,
-    GpsAltitude
+    GpsLongitudeReference,
+    GpsAltitude,
+    GpsAltitudeReference
 }
 
 public sealed record EmbeddedMetadataValue(

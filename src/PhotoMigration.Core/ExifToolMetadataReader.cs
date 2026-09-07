@@ -15,8 +15,11 @@ public static class ExifToolMetadataReader
             ["CreateDate"] = EmbeddedMetadataField.CaptureDateTime,
             ["OffsetTimeOriginal"] = EmbeddedMetadataField.CaptureTimezoneOffset,
             ["GPSLatitude"] = EmbeddedMetadataField.GpsLatitude,
+            ["GPSLatitudeRef"] = EmbeddedMetadataField.GpsLatitudeReference,
             ["GPSLongitude"] = EmbeddedMetadataField.GpsLongitude,
-            ["GPSAltitude"] = EmbeddedMetadataField.GpsAltitude
+            ["GPSLongitudeRef"] = EmbeddedMetadataField.GpsLongitudeReference,
+            ["GPSAltitude"] = EmbeddedMetadataField.GpsAltitude,
+            ["GPSAltitudeRef"] = EmbeddedMetadataField.GpsAltitudeReference
         };
 
     private static readonly string[] RequestedArguments =
@@ -29,12 +32,15 @@ public static class ExifToolMetadataReader
         "-XMP:DateTimeOriginal",
         "-XMP:CreateDate",
         "-EXIF:OffsetTimeOriginal",
-        "-EXIF:GPSLatitude",
-        "-EXIF:GPSLongitude",
-        "-EXIF:GPSAltitude",
-        "-XMP:GPSLatitude",
-        "-XMP:GPSLongitude",
-        "-XMP:GPSAltitude"
+        "-EXIF:GPSLatitude#",
+        "-EXIF:GPSLatitudeRef#",
+        "-EXIF:GPSLongitude#",
+        "-EXIF:GPSLongitudeRef#",
+        "-EXIF:GPSAltitude#",
+        "-EXIF:GPSAltitudeRef#",
+        "-XMP:GPSLatitude#",
+        "-XMP:GPSLongitude#",
+        "-XMP:GPSAltitude#"
     ];
 
     public static readonly TimeSpan DefaultReadTimeout = TimeSpan.FromSeconds(5);
