@@ -231,3 +231,28 @@ timezone is unknown. Embedded parsing issues without a remaining valid value
 require review; otherwise the result reports capture time as missing. The layer
 does not access files, run ExifTool, decide locations, compare other metadata,
 or write output.
+
+## Location decisions
+
+Core can make a read-only location decision from an embedded GPS parse result
+and parsed Takeout sidecar metadata. It normalizes and retains the GPS result,
+builds same-group embedded locations with `EmbeddedLocationBuilder`, and retains
+the build result, sidecar metadata, sidecar assessment, and every source and
+reference value. Valid embedded locations are never replaced by sidecar values.
+
+Multiple embedded locations are equivalent only when every latitude and
+longitude pair differs by no more than `0.000001` degrees. Altitudes are compared
+only when both locations contain them and may differ by no more than `0.1`
+meters. Missing altitude does not create a conflict. Non-equivalent candidates
+require review; equivalent candidates are all kept without group preference,
+rounding, averaging, or deduplication.
+
+A complete sidecar `geoData` pair is compared with every embedded location using
+the same tolerances. Results distinguish matches, coordinate conflicts, altitude
+conflicts, incomplete sidecar coordinates, unavailable sidecar coordinates, and
+the Google `0, 0` placeholder. Conflicts remain reportable but do not replace
+embedded metadata. With no complete embedded location, parsing or building
+issues require review; otherwise a complete non-placeholder sidecar pair may be
+proposed with optional altitude. An incomplete pair requires review, while a
+sidecar `0, 0` pair is retained as a placeholder but never proposed for writing.
+Embedded `0, 0` remains valid. This layer performs no I/O or metadata writing.
