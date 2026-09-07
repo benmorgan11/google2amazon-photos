@@ -356,3 +356,32 @@ otherwise. Invalid arguments, ExifTool detection failures, and operational
 failures return `1`. Unused JSON candidates and `Other` files remain summary
 counts but do not affect the exit code. The command finishes completed runs with
 an explicit read-only confirmation and does not create saved reports.
+
+## Destination path planning
+
+Core can create a pure destination-path plan from absolute Takeout and output
+roots plus explicit media inventory entries. A successful result contains one
+item per entry in ordinal relative-path order. Each item retains the original
+`InventoryEntry` and provides absolute source and destination paths while
+preserving the entry's relative directories and filename.
+
+The planner rejects equal or overlapping roots, including an output nested in
+the source or a source nested in the output. Logical paths must be nonempty and
+relative, with no empty, `.` or `..` segments, and their normalized source and
+destination paths must remain strictly below the corresponding root. Exact
+duplicate logical paths produce typed issues rather than duplicate items.
+
+Destination collision checks are deliberately conservative for the target Intel
+Mac: absolute destination names are compared case-insensitively after standard
+.NET Form C Unicode normalization. This detects case-only and canonically
+equivalent Unicode names. A path that would need another planned file to be a
+directory is also a typed file-versus-directory conflict. The planner never
+renames entries or invents suffixes. Any issue produces a failure result instead
+of a partial usable plan.
+
+This milestone performs lexical validation only. It does not inspect source or
+output files, create directories, copy or hash media, run ExifTool, change
+timestamps, or write metadata. A future output writer must revalidate the real
+filesystem immediately before use, keep source and output roots separate, reject
+symbolic links and reparse points, and handle races and existing output paths
+without overwriting them.
