@@ -256,3 +256,31 @@ issues require review; otherwise a complete non-placeholder sidecar pair may be
 proposed with optional altitude. An incomplete pair requires review, while a
 sidecar `0, 0` pair is retained as a placeholder but never proposed for writing.
 Embedded `0, 0` remains valid. This layer performs no I/O or metadata writing.
+
+## Per-file metadata plans
+
+Core can build a read-only plan for one embedded metadata read result and one
+parsed Takeout sidecar. For a successful read, the plan composes the existing
+capture-time parser, GPS parser, embedded location builder, capture-time decision
+maker, and location decision maker. It retains the original read result, complete
+sidecar metadata, every intermediate parse and build result, both decisions, and
+ordered typed review reasons. Sidecar title and description remain source
+metadata only; the plan does not propose writing them.
+
+The overall status distinguishes no proposed change, safe proposed changes,
+review required, embedded metadata unavailable, and an embedded format whose
+reading is not implemented yet. A sidecar `PhotoTakenTime` or complete,
+non-placeholder `geoData` proposal is a safe change only when no review reason
+exists. Low-confidence `CreationTime`, decision-level review, embedded-versus-
+sidecar conflicts, any parsing or location-building issue, and ExifTool warnings,
+JSON error diagnostics, or nonempty standard error require review. An unknown
+embedded timezone remains reportable but does not by itself require review when
+the embedded value is preserved.
+
+Unsupported-media, missing-media, ExifTool-failure, timeout, and malformed-JSON
+reader results remain distinct typed plan outcomes with their original details.
+The unsupported status describes only the current embedded reader boundary, not
+Amazon Photos compatibility. All other read failures mean embedded metadata was
+unavailable, and the planner does not attempt a sidecar fallback because the
+existing metadata could not be checked safely. This layer performs no filesystem
+access, tool execution, copying, hashing, metadata writing, or CLI presentation.
