@@ -385,3 +385,48 @@ timestamps, or write metadata. A future output writer must revalidate the real
 filesystem immediately before use, keep source and output roots separate, reject
 symbolic links and reparse points, and handle races and existing output paths
 without overwriting them.
+
+## Verified temporary media staging
+
+Core can stage one `DestinationPathPlanningItem` as a verified temporary copy.
+The service re-runs `DestinationPathPlanner` for the original inventory entry and
+requires the supplied absolute source and destination paths to match that result.
+Both roots must already exist as separate, non-overlapping directories. The
+roots and every existing component below them are checked for symbolic links or
+reparse points, the source must be a regular file, and its open-stream length
+must match the inventoried byte count.
+
+Destination directories are created one component at a time beneath the output
+root and checked after creation. An existing final destination of any kind is a
+failure. The service creates a generated temporary filename in the intended
+destination directory with `FileMode.CreateNew`, retrying name collisions
+without overwriting or reusing them. The temporary name retains the media's
+extension for later format-specific work, but the verified file is not moved to
+its final destination in this milestone.
+
+The source is read through an explicit stream while its SHA-256 hash and copied
+byte count are calculated. After the temporary stream is closed and flushed, the
+temporary file is independently reopened and read to calculate its own byte
+count and SHA-256 hash. Success retains both hashes, the count, original planning
+item, temporary path, and intended final path. A mismatch is a typed verification
+failure. Other typed failures distinguish invalid plans or roots, linked paths,
+missing, changed, or non-regular sources, existing destinations, directory and
+temporary-file creation problems, copy errors, and cleanup errors.
+
+After creating a temporary file, every failure attempts to delete only that
+file. A cleanup failure retains its path and the preceding failure category;
+successful staging deliberately leaves the verified temporary file for a later
+metadata stage. Source files and unrelated output files are never deleted or
+modified, and sidecars are not copied.
+
+Portable .NET path APIs cannot atomically hold every directory component open
+with no-follow semantics. Another process could replace a checked component or
+create the final destination between validation steps. On some filesystems,
+another process may also alter a source while it is being read despite the file
+sharing mode. The byte count and hashes prove that the temporary file matches the
+bytes this operation read; the inventory contains no earlier hash that could
+prove those bytes predate a concurrent same-size source change. The service
+checks components, source length, and the final destination again before
+success, but this reduces rather than eliminates these races. A future publisher
+must repeat the checks, use create-new or non-overwriting move semantics, and
+fail closed if any path has changed.
