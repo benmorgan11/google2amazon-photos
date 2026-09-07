@@ -2,6 +2,7 @@ using System.Text;
 
 namespace PhotoMigration.Cli.Tests;
 
+[Collection(ExternalProcessTestCollection.Name)]
 public sealed class CliApplicationTests
 {
     [Fact]
