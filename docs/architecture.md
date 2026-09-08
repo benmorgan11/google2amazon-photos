@@ -591,3 +591,28 @@ baseline and actual media hash, and ExifTool diagnostics. Failures distinguish
 filesystem changes, malformed or missing values, GPS or media-hash mismatches,
 tool errors, and bounded timeouts. Verification does not publish, rename, move,
 delete, repair, or otherwise modify any file.
+
+## Verified JPEG publication
+
+Core can publish one successfully verified JPEG GPS result by moving its staged
+temporary file to the retained final destination. Before moving, the publisher
+requires an existing absolute output root that is a non-linked directory. The
+temporary and final paths must match the retained staging, writing, and
+verification results, remain strictly below the output root, and share one
+directory. Every existing component below the root is checked for symbolic
+links or reparse points, the temporary path must remain a regular non-linked
+file, and the final destination must remain absent.
+
+Publication uses `File.Move` with overwrite disabled. Because staging placed the
+temporary file beside its final destination, this is a same-directory move and
+does not copy or re-encode the verified bytes. Success retains the complete
+verification result, former temporary path, final path, and byte count recorded
+immediately before publication. Validation and move failures retain the same
+paths and do not delete, repair, copy, or deliberately move the temporary file.
+The original Takeout source is never accessed.
+
+Portable filesystem APIs cannot make the validation checks and move one atomic
+operation. A competing process may still create the destination or replace a
+checked path; the non-overwriting move then fails rather than replacing an
+existing file. Multi-file orchestration and recovery from external concurrent
+changes remain outside this milestone.
