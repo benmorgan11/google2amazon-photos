@@ -490,3 +490,52 @@ Portable path checks cannot eliminate a race in which another process replaces
 the temporary file between validation and process access. The reader validates
 again after ExifTool exits, but a later publishing stage must repeat all
 filesystem safety checks before trusting or moving the file.
+
+## Pure JPEG metadata write planning
+
+Core can build a write plan from one complete `TakeoutMetadataPlanningItem` and
+the successful baseline `ImageDataHash` result for its verified temporary copy.
+The Takeout item must contain a `SuccessfulMediaMetadataPlan`. The builder is
+pure: it does not inspect the filesystem, run ExifTool, or modify the temporary
+copy. It joins already-validated results by checking that the Takeout media
+entry and embedded-metadata source match the staging result, that the baseline
+and staging temporary paths agree, and that the retained final destinations
+agree. The builder trusts the successful-result invariants established by the
+destination planner, stager, media-data-hash reader, and metadata-plan builder;
+it does not repeat their path normalization, hash validation, or decision
+derivation. Every outcome retains the complete Takeout planning item.
+
+Only JPEG and JPG paths are supported, using case-insensitive extension
+matching. Typed outcomes distinguish a plan ready for a later writer, no changes
+required, review required, invalid input or provenance, and a format whose write
+planning is not supported. Every outcome retains the complete metadata plan,
+staging result, and baseline hash result.
+
+The only assignments currently produced are JPEG EXIF GPS latitude, latitude
+reference, longitude, longitude reference, and optional altitude with its
+above- or below-sea-level reference. They are produced only from a
+`ProposeSidecarLocationDecision` backed by a `MatchedTakeoutSidecarState`. The
+matched analysis result must retain the same media entry and the exact parsed
+metadata object used by the metadata plan, plus one sidecar inventory entry and
+its match rule. Each assignment retains that sidecar entry and rule alongside
+the full `geoData` metadata. Unmatched, invalid, ambiguous, or forged sidecar
+states cannot authorize an assignment. Values use invariant round-trip numeric
+formatting and are emitted in a fixed typed-tag order. The fixed assignment
+builder produces each supported tag at most once. Existing embedded locations
+are never assigned or replaced.
+
+Capture-time assignments are deliberately excluded. Existing embedded capture
+times remain unchanged. A proposed sidecar `PhotoTakenTime` requires review
+because the Unix instant does not establish the original local timezone, and a
+low-confidence `CreationTime` fallback remains blocked. Conflicts, mixed
+timezone knowledge, parsing issues, location issues, and every retained
+`MediaMetadataPlanReviewReason` also prevent an executable plan. The write-plan
+builder consumes those upstream reasons instead of reconstructing them. A plan
+may retain otherwise safe GPS assignments for review, but no assignment is
+approved for execution until all review reasons are resolved.
+
+This milestone builds typed group, tag, string-value, and source records rather
+than ExifTool arguments or shell text. It does not write title, description,
+orientation, timestamps, GPS data, or any other metadata. A future writer must
+repeat filesystem and baseline-hash validation immediately before performing
+any write.
