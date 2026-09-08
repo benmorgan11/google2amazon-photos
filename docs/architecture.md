@@ -569,3 +569,25 @@ saved baseline before publication can be considered.
 As in earlier filesystem stages, portable path checks reduce but cannot remove
 replacement races between validation and ExifTool opening the file. Final
 publication must repeat the relevant checks and use non-overwriting semantics.
+
+## JPEG GPS write verification
+
+Core can verify one successful JPEG GPS write before the temporary copy is
+eligible for future publication. The verifier checks that the temporary path is
+still a regular, non-linked file and that the final destination remains absent,
+then makes one direct, read-only ExifTool call for the grouped EXIF GPS tags and
+SHA-256 `ImageDataHash`. The original Takeout source is never opened.
+
+The returned EXIF values are parsed through the existing GPS parser and location
+builder. Latitude and longitude use the existing `0.000001` degree tolerance,
+altitude uses the existing `0.1` meter tolerance, and direction and altitude
+references must match exactly. An omitted altitude assignment requires altitude
+to remain absent. The post-write media-only `ImageDataHash` must exactly match
+the saved baseline after hexadecimal normalization; the whole-file staging hash
+is deliberately not compared because a metadata write changes those bytes.
+
+Typed results retain the write result, paths, expected and actual GPS values,
+baseline and actual media hash, and ExifTool diagnostics. Failures distinguish
+filesystem changes, malformed or missing values, GPS or media-hash mismatches,
+tool errors, and bounded timeouts. Verification does not publish, rename, move,
+delete, repair, or otherwise modify any file.
