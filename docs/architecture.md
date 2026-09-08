@@ -539,3 +539,33 @@ than ExifTool arguments or shell text. It does not write title, description,
 orientation, timestamps, GPS data, or any other metadata. A future writer must
 repeat filesystem and baseline-hash validation immediately before performing
 any write.
+
+## JPEG GPS metadata writing
+
+Core can execute one approved `JpegMetadataWriteReadyResult` against its unique
+verified temporary output copy. Before starting ExifTool, the writer requires
+the output root to remain an existing non-linked directory, keeps the temporary
+and final paths strictly below that root, rejects linked components and
+non-regular or missing temporary files, and fails if the final destination
+exists. It independently recalculates the temporary copy's byte count and
+whole-file SHA-256 and requires both to match the staging result. The original
+Takeout path is never opened.
+
+The writer accepts only a complete EXIF latitude/longitude assignment set and
+requires altitude and altitude reference to occur together. It starts ExifTool
+directly, without a shell, with `-overwrite_original`, the approved assignments
+in deterministic tag order, and the absolute temporary path as the final
+argument. The overwrite option applies only to the unique staging copy. No
+filename, directory, all-metadata, capture-time, or final-publication option is
+used.
+
+Failures and timeouts retain the temporary file without cleanup or rollback.
+Process termination and redirected-output capture are bounded. A zero exit code
+returns a typed `PendingVerification` result: it does not establish that GPS was
+written correctly or that media payload bytes were preserved. A later milestone
+must read the metadata back and compare the post-write `ImageDataHash` with the
+saved baseline before publication can be considered.
+
+As in earlier filesystem stages, portable path checks reduce but cannot remove
+replacement races between validation and ExifTool opening the file. Final
+publication must repeat the relevant checks and use non-overwriting semantics.
