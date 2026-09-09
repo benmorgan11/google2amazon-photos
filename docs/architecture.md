@@ -638,3 +638,28 @@ otherwise alter the temporary file. The Takeout source is never opened. As with
 verified JPEG publication, portable filesystem races remain possible between
 the final checks and move; a competing destination causes the non-overwriting
 move to fail rather than replace that file.
+
+## Multi-file Takeout preparation
+
+Core can prepare one analyzed Takeout library sequentially. The preparation
+service runs `TakeoutMetadataPlanner` once, creates one destination plan for all
+media candidates, and processes its per-file items in ordinal relative-path
+order. Every media candidate receives one immutable outcome. The complete result
+retains the original metadata planning and analysis results, the destination
+planning result, categorized outcome lists, and derived publication, attention,
+and failure counts.
+
+Items with no proposed metadata change are staged and passed directly to the
+verified unchanged-media publisher. Unmatched sidecars do not block this path.
+Safe metadata changes use the existing staged JPEG pipeline without duplicating
+its decisions: baseline `ImageDataHash`, JPEG write planning, GPS writing,
+post-write verification, and verified JPEG publication. The service adds no
+format-specific writer beyond the existing JPEG implementation.
+
+Review-required or unavailable metadata, unsupported readers or writers, and
+invalid or ambiguous sidecars remain attention outcomes and are not published.
+Operational failures retain the exact existing stage result and identify the
+failed stage. Processing continues after per-file attention or failure; already
+published files are not rolled back, and downstream diagnostic temporary files
+are not deleted. Preparation is intentionally single-threaded and adds no CLI,
+progress reporting, or batch recovery policy.
