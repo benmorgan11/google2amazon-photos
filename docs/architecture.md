@@ -663,3 +663,22 @@ failed stage. Processing continues after per-file attention or failure; already
 published files are not rolled back, and downstream diagnostic temporary files
 are not deleted. Preparation is intentionally single-threaded and adds no CLI,
 progress reporting, or batch recovery policy.
+
+## Preparation command
+
+The CLI exposes multi-file preparation through `prepare <takeout-folder>
+<output-folder> [--exiftool <executable-path>]`. It requires two existing,
+non-linked, non-overlapping directories, normalizes them to absolute paths, and
+performs ExifTool detection exactly once. An explicit `--exiftool` value is the
+authoritative executable path. After detection, the command prints a notice that
+large libraries may take time and delegates the complete workflow to
+`TakeoutPreparationService` without reproducing its per-file decisions.
+
+Completed runs print publication, attention, failure, unused-JSON, and `Other`
+counts. Only attention and failed media are listed, in ordinal path order, using
+the concise outcome reason or failure stage and message. Retained metadata,
+sidecar contents, hashes, captured ExifTool output, and stack traces are not part
+of normal output. Exit code `0` means every media candidate was published, `2`
+means preparation completed with attention or failed items, and `1` covers
+invalid arguments, ExifTool detection failures, or library-level operational
+failures. Unused JSON and `Other` counts do not affect the exit code.

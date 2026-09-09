@@ -9,6 +9,8 @@ public static class CliApplication
         "\n       PhotoMigration.Cli analyze <folder>" +
         "\n       PhotoMigration.Cli check-exiftool [--path <executable-path>]" +
         "\n       PhotoMigration.Cli plan <takeout-folder> " +
+        "[--exiftool <executable-path>]" +
+        "\n       PhotoMigration.Cli prepare <takeout-folder> <output-folder> " +
         "[--exiftool <executable-path>]";
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
@@ -31,6 +33,7 @@ public static class CliApplication
                 "analyze" when args.Length == 2 => RunAnalysis(args[1], output),
                 "check-exiftool" => RunExifToolCheck(args, output, error),
                 "plan" => RunPlan(args, output, error),
+                "prepare" => RunPrepare(args, output, error),
                 _ => WriteUsageError(error)
             };
         }
@@ -103,6 +106,244 @@ public static class CliApplication
         output.WriteLine("Planning completed read-only; no files were changed.");
 
         return planningResult.Items.Any(NeedsPlanningAttention) ? 2 : 0;
+    }
+
+    private static int RunPrepare(
+        string[] args,
+        TextWriter output,
+        TextWriter error)
+    {
+        if (!TryParsePrepareArguments(
+                args,
+                out var takeoutFolder,
+                out var outputFolder,
+                out var explicitExifToolPath))
+        {
+            return WriteUsageError(error);
+        }
+
+        if (!TryValidatePreparationRoots(
+                takeoutFolder!,
+                outputFolder!,
+                out var absoluteTakeoutFolder,
+                out var absoluteOutputFolder,
+                out var rootError))
+        {
+            return WriteError(error, rootError!);
+        }
+
+        var detectionResult = ExifToolDetector.Detect(explicitExifToolPath);
+        if (detectionResult is not ExifToolFoundResult found)
+        {
+            return WriteExifToolDetectionError(detectionResult, error);
+        }
+
+        output.WriteLine("Preparing media files. Large libraries may take some time.");
+        output.WriteLine();
+
+        var preparationResult = TakeoutPreparationService.Prepare(
+            absoluteTakeoutFolder!,
+            absoluteOutputFolder!,
+            found.ExecutablePath);
+        WritePreparationSummary(preparationResult, output);
+        WritePreparationAttentionAndFailures(preparationResult.Outcomes, output);
+
+        output.WriteLine();
+        output.WriteLine("Preparation completed. The Takeout source was not changed.");
+        output.WriteLine($"Output directory: {absoluteOutputFolder}");
+
+        return preparationResult.AttentionRequiredCount > 0
+               || preparationResult.FailedCount > 0
+            ? 2
+            : 0;
+    }
+
+    private static bool TryParsePrepareArguments(
+        string[] args,
+        out string? takeoutFolder,
+        out string? outputFolder,
+        out string? explicitExifToolPath)
+    {
+        takeoutFolder = null;
+        outputFolder = null;
+        explicitExifToolPath = null;
+
+        if (args.Length == 3
+            && !string.IsNullOrWhiteSpace(args[1])
+            && !string.IsNullOrWhiteSpace(args[2]))
+        {
+            takeoutFolder = args[1];
+            outputFolder = args[2];
+            return true;
+        }
+
+        if (args.Length == 5
+            && !string.IsNullOrWhiteSpace(args[1])
+            && !string.IsNullOrWhiteSpace(args[2])
+            && string.Equals(args[3], "--exiftool", StringComparison.Ordinal)
+            && !string.IsNullOrWhiteSpace(args[4]))
+        {
+            takeoutFolder = args[1];
+            outputFolder = args[2];
+            explicitExifToolPath = args[4];
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryValidatePreparationRoots(
+        string takeoutFolder,
+        string outputFolder,
+        out string? absoluteTakeoutFolder,
+        out string? absoluteOutputFolder,
+        out string? errorMessage)
+    {
+        absoluteTakeoutFolder = null;
+        absoluteOutputFolder = null;
+        errorMessage = null;
+
+        try
+        {
+            absoluteTakeoutFolder = Path.TrimEndingDirectorySeparator(
+                Path.GetFullPath(takeoutFolder));
+            absoluteOutputFolder = Path.TrimEndingDirectorySeparator(
+                Path.GetFullPath(outputFolder));
+        }
+        catch (Exception exception) when (exception is ArgumentException
+                                          or NotSupportedException
+                                          or PathTooLongException)
+        {
+            errorMessage = $"A preparation folder path is invalid: {exception.Message}";
+            return false;
+        }
+
+        if (!TryValidateExistingDirectory(
+                absoluteTakeoutFolder,
+                "Takeout source",
+                out errorMessage)
+            || !TryValidateExistingDirectory(
+                absoluteOutputFolder,
+                "Output",
+                out errorMessage))
+        {
+            return false;
+        }
+
+        if (IsSameOrDescendant(absoluteTakeoutFolder, absoluteOutputFolder)
+            || IsSameOrDescendant(absoluteOutputFolder, absoluteTakeoutFolder))
+        {
+            errorMessage =
+                "The Takeout source and output directories must be separate and must not overlap.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryValidateExistingDirectory(
+        string path,
+        string description,
+        out string? errorMessage)
+    {
+        errorMessage = null;
+
+        try
+        {
+            var attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                errorMessage =
+                    $"The {description} directory must not be a symbolic link or reparse point: " +
+                    $"'{path}'.";
+                return false;
+            }
+
+            if ((attributes & FileAttributes.Directory) == 0)
+            {
+                errorMessage = $"The {description} path is not a directory: '{path}'.";
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception exception) when (exception is FileNotFoundException
+                                          or DirectoryNotFoundException)
+        {
+            errorMessage = $"The {description} directory does not exist: '{path}'.";
+            return false;
+        }
+        catch (Exception exception) when (exception is IOException
+                                          or UnauthorizedAccessException
+                                          or NotSupportedException
+                                          or System.Security.SecurityException)
+        {
+            errorMessage =
+                $"The {description} directory could not be inspected: {exception.Message}";
+            return false;
+        }
+    }
+
+    private static bool IsSameOrDescendant(string path, string root)
+    {
+        if (StringComparer.OrdinalIgnoreCase.Equals(path, root))
+        {
+            return true;
+        }
+
+        var rootWithSeparator = Path.EndsInDirectorySeparator(root)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+        return path.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void WritePreparationSummary(
+        TakeoutPreparationResult result,
+        TextWriter output)
+    {
+        output.WriteLine("Preparation summary:");
+        output.WriteLine($"Total media: {result.TotalMediaCount}");
+        output.WriteLine($"Published unchanged: {result.PublishedUnchangedCount}");
+        output.WriteLine(
+            $"Published with verified JPEG GPS: {result.PublishedJpegGpsCount}");
+        output.WriteLine($"Attention required: {result.AttentionRequiredCount}");
+        output.WriteLine($"Failed: {result.FailedCount}");
+        output.WriteLine(
+            $"Unused JSON: {result.AnalysisResult.UnusedJsonCandidates.Count}");
+        output.WriteLine($"Other files: {result.AnalysisResult.OtherFiles.Count}");
+    }
+
+    private static void WritePreparationAttentionAndFailures(
+        IReadOnlyList<TakeoutPreparationItemOutcome> outcomes,
+        TextWriter output)
+    {
+        var unpublishedItems = outcomes
+            .Where(outcome => outcome.Kind is TakeoutPreparationOutcomeKind.AttentionRequired
+                or TakeoutPreparationOutcomeKind.Failed)
+            .OrderBy(
+                outcome => outcome.PlanningItem.MediaEntry.RelativePath,
+                StringComparer.Ordinal)
+            .ToList();
+        if (unpublishedItems.Count == 0)
+        {
+            return;
+        }
+
+        output.WriteLine();
+        output.WriteLine("Items not published:");
+        foreach (var outcome in unpublishedItems)
+        {
+            output.WriteLine($"  {outcome.PlanningItem.MediaEntry.RelativePath}");
+            if (outcome.Kind == TakeoutPreparationOutcomeKind.AttentionRequired)
+            {
+                output.WriteLine($"    Reason: {outcome.Message}");
+            }
+            else
+            {
+                output.WriteLine($"    Failed stage: {outcome.FailureStage}");
+                output.WriteLine($"    Error: {outcome.Message}");
+            }
+        }
     }
 
     private static bool TryParsePlanArguments(

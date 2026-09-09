@@ -6,10 +6,10 @@ A .NET command-line project made to prepare Google Takeout photos and videos to 
 
 ## Status
 
-Read-only inventory, Takeout analysis, ExifTool checking, and metadata planning
-commands are implemented. Planning compares selected embedded JPEG, HEIC/HEIF,
-and MOV/MP4 metadata with unambiguous sidecar metadata and reports proposed
-changes and review cases without changing source files.
+Read-only inventory, Takeout analysis, ExifTool checking, metadata planning, and
+output preparation commands are implemented. Planning compares selected embedded
+JPEG, HEIC/HEIF, and MOV/MP4 metadata with unambiguous sidecar metadata. Preparation
+publishes verified output copies while leaving the Takeout source unchanged.
 
 ## Goals
 
@@ -54,10 +54,10 @@ rule. The command does not write files or reports.
 Command exit codes are:
 
 - `0`: the command completed successfully; for `analyze` and `plan`, no defined
-  attention case was found.
+  attention case was found, and for `prepare`, every media item was published.
 - `1`: arguments were invalid or the operation could not be completed.
-- `2`: analysis or planning completed, but one or more media items need
-  attention.
+- `2`: analysis, planning, or preparation completed, but one or more media items
+  need attention or failed.
 
 Unused JSON candidates and `Other` files are counted but do not produce exit
 code `2`, because they may be album metadata or unrelated export files.
@@ -96,6 +96,32 @@ are limited to unmatched, invalid, ambiguous, review-required, unavailable, and
 not-yet-supported items. Successful metadata values are not printed. Exit code
 `2` indicates these attention cases; unused JSON and `Other` files are counted
 but do not affect the exit code. The command creates no reports or output files.
+
+Use `plan` as the read-only preview before preparing output. When you are ready,
+create a separate output directory and run:
+
+```console
+dotnet run --project src/PhotoMigration.Cli -- prepare <takeout-folder> <output-folder> [--exiftool <executable-path>]
+```
+
+For example, on macOS:
+
+```console
+dotnet run --project src/PhotoMigration.Cli -- prepare "/Users/alex/Downloads/Takeout/Google Photos" "/Users/alex/Pictures/Amazon Photos Ready" --exiftool "/usr/local/bin/exiftool"
+```
+
+Both directories must already exist and must not overlap. Always use an output
+directory separate from the Takeout export: the command never changes source
+media and never overwrites an existing output file. Files that need no metadata
+change are published byte-for-byte. The current writer can restore and verify
+GPS changes only for JPEG/JPG files. Files requiring uncertain changes or changes
+to an unsupported format remain unpublished and are listed for attention, while
+per-file operational failures are reported without stopping later files.
+
+The preparation summary counts total media, both publication paths, attention
+items, failures, unused JSON, and `Other` files. Only attention and failed media
+are listed individually. Completed runs confirm that the Takeout source was not
+changed and show the output directory.
 
 ## Privacy
 
