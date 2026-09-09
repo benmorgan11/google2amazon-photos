@@ -616,3 +616,25 @@ operation. A competing process may still create the destination or replace a
 checked path; the non-overwriting move then fails rather than replacing an
 existing file. Multi-file orchestration and recovery from external concurrent
 changes remain outside this milestone.
+
+## Verified unchanged-media publication
+
+Core can publish any successfully staged media file when no metadata change is
+required. The publisher is format-agnostic: it does not inspect metadata or run
+ExifTool. It requires an existing absolute, non-linked output directory,
+revalidates that the retained temporary and final paths remain together below
+that root, rejects linked components and non-regular temporary files, and
+requires the final destination to remain absent.
+
+Immediately before publication, the temporary file is read independently to
+recalculate its byte count and whole-file SHA-256. Both must match the staging
+result, proving that the unchanged output still contains exactly the bytes that
+were staged. Publication then uses a same-directory `File.Move` with overwrite
+disabled. Success retains the staging result, former temporary path, final path,
+verified byte count, and SHA-256.
+
+Validation and move failures do not delete, repair, rename automatically, or
+otherwise alter the temporary file. The Takeout source is never opened. As with
+verified JPEG publication, portable filesystem races remain possible between
+the final checks and move; a competing destination causes the non-overwriting
+move to fail rather than replace that file.
