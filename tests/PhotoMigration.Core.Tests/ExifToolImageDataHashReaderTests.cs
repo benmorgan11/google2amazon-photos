@@ -54,6 +54,7 @@ public sealed class ExifToolImageDataHashReaderTests
     [InlineData("photo.jPeG")]
     [InlineData("photo.HEic")]
     [InlineData("photo.HeIf")]
+    [InlineData("photo.PnG")]
     [InlineData("video.MoV")]
     [InlineData("video.mP4")]
     public void Read_SupportsCurrentPlannedMediaFormatsIgnoringCase(string relativePath)
@@ -143,12 +144,12 @@ public sealed class ExifToolImageDataHashReaderTests
     public void Read_UnsupportedFormatDoesNotRunExifTool()
     {
         using var fixture = new HashReaderFixture();
-        var staging = fixture.Stage("photo.png", [1]);
+        var staging = fixture.Stage("photo.webp", [1]);
 
         var result = Assert.IsType<ImageDataHashUnsupportedMediaResult>(
             ExifToolImageDataHashReader.Read(staging, fixture.MissingExecutablePath));
 
-        Assert.Equal(".png", result.Extension);
+        Assert.Equal(".webp", result.Extension);
     }
 
     [Fact]

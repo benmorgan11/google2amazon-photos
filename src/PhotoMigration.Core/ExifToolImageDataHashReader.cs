@@ -19,6 +19,7 @@ public static class ExifToolImageDataHashReader
         ".jpeg",
         ".heic",
         ".heif",
+        ".png",
         ".mov",
         ".mp4"
     };
