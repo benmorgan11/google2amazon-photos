@@ -1,5 +1,3 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -34,7 +32,6 @@ internal sealed record VerifiedTemporaryExifToolWriteOutcome(
 internal static class VerifiedTemporaryExifToolWriter
 {
     private const int BufferSize = 81_920;
-    private const int CleanupWaitMilliseconds = 1_000;
 
     internal static bool TryNormalizePath(
         string? path,
@@ -128,7 +125,7 @@ internal static class VerifiedTemporaryExifToolWriter
             operationDescription);
     }
 
-    private static VerifiedTemporaryExifToolWriteOutcome? ValidatePaths(
+    internal static VerifiedTemporaryExifToolWriteOutcome? ValidatePaths(
         string outputRoot,
         VerifiedMediaFileStagingSuccessResult staging)
     {
@@ -278,181 +275,32 @@ internal static class VerifiedTemporaryExifToolWriter
         TimeSpan timeout,
         string operationDescription)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = exifToolPath,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-
-        startInfo.ArgumentList.Add("-overwrite_original");
+        var arguments = new List<string> { "-overwrite_original" };
         foreach (var argument in assignmentArguments)
         {
-            startInfo.ArgumentList.Add(argument);
+            arguments.Add(argument);
         }
-        startInfo.ArgumentList.Add(temporaryPath);
+        arguments.Add(temporaryPath);
 
-        using var process = new Process { StartInfo = startInfo };
-        try
-        {
-            if (!process.Start())
-            {
-                return Failure(
-                    VerifiedTemporaryExifToolWriteFailureKind.ExifToolFailure,
-                    "ExifTool could not be started.",
-                    retainExifToolPath: true);
-            }
-        }
-        catch (Exception exception) when (exception is Win32Exception
-                                          or InvalidOperationException
-                                          or IOException
-                                          or UnauthorizedAccessException
-                                          or NotSupportedException)
-        {
-            return Failure(
-                VerifiedTemporaryExifToolWriteFailureKind.ExifToolFailure,
-                $"ExifTool could not be started: {exception.Message}",
-                retainExifToolPath: true);
-        }
-
-        var standardOutput = process.StandardOutput.ReadToEndAsync();
-        var standardError = process.StandardError.ReadToEndAsync();
-        var timeoutMilliseconds = (int)Math.Min(
-            Math.Ceiling(timeout.TotalMilliseconds),
-            int.MaxValue);
-        if (!process.WaitForExit(timeoutMilliseconds))
-        {
-            var terminationError = Terminate(process);
-            TryCaptureOutput(
-                standardOutput,
-                standardError,
-                out var timedOutOutput,
-                out var timedOutError,
-                ref terminationError);
-            return new VerifiedTemporaryExifToolWriteOutcome(
-                false,
-                VerifiedTemporaryExifToolWriteFailureKind.TimedOut,
-                $"ExifTool {operationDescription} timed out after {timeout}.",
-                Timeout: timeout,
-                TerminationError: terminationError,
-                StandardOutput: timedOutOutput,
-                StandardError: timedOutError,
-                RetainExifToolPath: true);
-        }
-
-        string? captureError = null;
-        if (!TryCaptureOutput(
-                standardOutput,
-                standardError,
-                out var output,
-                out var error,
-                ref captureError))
-        {
-            return new VerifiedTemporaryExifToolWriteOutcome(
-                false,
-                VerifiedTemporaryExifToolWriteFailureKind.ExifToolFailure,
-                captureError!,
-                process.ExitCode,
-                StandardOutput: output,
-                StandardError: error,
-                RetainExifToolPath: true);
-        }
-
-        return process.ExitCode == 0
-            ? new VerifiedTemporaryExifToolWriteOutcome(
-                true,
-                StandardOutput: output,
-                StandardError: error,
-                RetainExifToolPath: true)
-            : new VerifiedTemporaryExifToolWriteOutcome(
-                false,
-                VerifiedTemporaryExifToolWriteFailureKind.ExifToolFailure,
-                $"ExifTool {operationDescription} exited with code {process.ExitCode}.",
-                process.ExitCode,
-                StandardOutput: output,
-                StandardError: error,
-                RetainExifToolPath: true);
-    }
-
-    private static bool TryCaptureOutput(
-        Task<string> standardOutput,
-        Task<string> standardError,
-        out string output,
-        out string error,
-        ref string? captureError)
-    {
-        output = string.Empty;
-        error = string.Empty;
-        if (captureError is not null)
-        {
-            return false;
-        }
-
-        try
-        {
-            var redirectedOutput = Task.WhenAll(standardOutput, standardError);
-            if (!redirectedOutput.Wait(CleanupWaitMilliseconds))
-            {
-                captureError = "ExifTool output streams did not close within one second.";
-                return false;
-            }
-
-            var captured = redirectedOutput.GetAwaiter().GetResult();
-            output = captured[0];
-            error = captured[1];
-            return true;
-        }
-        catch (Exception exception) when (exception is AggregateException
-                                          or IOException
-                                          or InvalidOperationException)
-        {
-            captureError = $"ExifTool output could not be read: {exception.Message}";
-            return false;
-        }
-    }
-
-    private static string? Terminate(Process process)
-    {
-        try
-        {
-            if (process.HasExited)
-            {
-                return null;
-            }
-
-            process.Kill(entireProcessTree: true);
-            return process.WaitForExit(CleanupWaitMilliseconds)
-                ? null
-                : "The timed-out ExifTool process did not exit within one second " +
-                  "after termination was requested.";
-        }
-        catch (InvalidOperationException exception)
-        {
-            return HasExited(process)
-                ? null
-                : $"The timed-out ExifTool process could not be terminated: " +
-                  exception.Message;
-        }
-        catch (Exception exception) when (exception is NotSupportedException
-                                          or Win32Exception)
-        {
-            return $"The timed-out ExifTool process could not be terminated: " +
-                   exception.Message;
-        }
-    }
-
-    private static bool HasExited(Process process)
-    {
-        try
-        {
-            return process.HasExited;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
+        var outcome = ExifToolProcessRunner.Run(
+            exifToolPath,
+            arguments.AsReadOnly(),
+            timeout,
+            operationDescription);
+        return new VerifiedTemporaryExifToolWriteOutcome(
+            outcome.Succeeded,
+            outcome.FailureKind == ExifToolProcessFailureKind.TimedOut
+                ? VerifiedTemporaryExifToolWriteFailureKind.TimedOut
+                : outcome.Succeeded
+                    ? null
+                    : VerifiedTemporaryExifToolWriteFailureKind.ExifToolFailure,
+            outcome.Message,
+            outcome.ExitCode,
+            outcome.Timeout,
+            outcome.TerminationError,
+            StandardOutput: outcome.StandardOutput,
+            StandardError: outcome.StandardError,
+            RetainExifToolPath: true);
     }
 
     private static IReadOnlyList<string> ComponentsBelowRoot(string root, string path)

@@ -606,10 +606,10 @@ directly without a shell, and uses `-overwrite_original` so ExifTool does not
 leave backup files.
 
 This writer and the JPEG GPS writer share one internal staging-write helper for
-path safety, whole-file hash verification, collision checks, and bounded
-ExifTool execution. Each public writer still validates its own typed plan,
-builds its ordered assignment arguments, and maps the internal outcome to its
-existing public result types.
+path safety, whole-file hash verification, and collision checks. A separate
+small internal process runner provides direct ExifTool execution, bounded
+timeouts, process termination, and output capture. Each public operation still
+owns its typed plan or result validation, ordered arguments, and public outcomes.
 
 Before writing, the service joins all three retained results to the same media,
 requires the temporary copy to remain a regular non-linked file below the output
@@ -620,10 +620,25 @@ videos; process-tree termination and output capture are bounded.
 A zero ExifTool exit returns `PendingVerification`. It neither proves that the
 requested fields were stored nor that `ImageDataHash` stayed unchanged. This
 stage never opens the Takeout source, publishes or renames the temporary copy,
-or integrates with the CLI. A later format-aware verifier must read the fields
-back and compare the post-write media hash with the retained baseline before a
-separate publisher can make the file final. Portable path checks reduce but do
-not eliminate replacement races during process access.
+or integrates with the CLI. Portable path checks reduce but do not eliminate
+replacement races during process access.
+
+## Amazon capture-time write verification
+
+Core can verify a successful Amazon capture-time write for JPEG/JPG, HEIC/HEIF,
+PNG, MOV, and MP4. One direct, read-only ExifTool call requests only the capture
+field or fields selected by the format-aware plan plus SHA-256 `ImageDataHash`.
+Returned capture-time strings must exactly equal every ordered approved
+assignment, and the media-data hash must equal the retained pre-write baseline.
+
+The verifier validates the retained write, staging, and baseline joins and checks
+that the temporary file is regular and non-linked and the final destination is
+absent both before and after ExifTool runs. Typed results distinguish invalid
+input, filesystem changes, tool failures, bounded timeouts, malformed or missing
+values, timestamp mismatches, and missing, invalid, or changed media hashes.
+Success retains expected and actual assignments, both hashes, paths, and tool
+diagnostics. Verification never opens the Takeout source, modifies or publishes
+the staged copy, or integrates with the CLI.
 
 ## JPEG GPS write verification
 
