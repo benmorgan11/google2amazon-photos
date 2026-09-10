@@ -466,7 +466,7 @@ count and full-file hashes are internally consistent, that its paths are
 absolute, and that the temporary file remains beside its intended final
 destination with the same extension. The original Takeout source is not opened.
 
-The reader supports JPEG/JPG, HEIC/HEIF, MOV, and MP4, using case-insensitive
+The reader supports JPEG/JPG, HEIC/HEIF, PNG, MOV, and MP4, using case-insensitive
 extension matching. It checks the temporary copy before ExifTool runs to ensure
 that the path exists and identifies a regular file rather than a symbolic link
 or reparse point. ExifTool is started directly with these exact arguments:
@@ -595,6 +595,35 @@ saved baseline before publication can be considered.
 As in earlier filesystem stages, portable path checks reduce but cannot remove
 replacement races between validation and ExifTool opening the file. Final
 publication must repeat the relevant checks and use non-overwriting semantics.
+
+## Amazon capture-time metadata writing
+
+Core can execute one ready Amazon capture-time plan against its matching verified
+temporary copy and baseline `ImageDataHash` result. The writer supports the
+planned JPEG/JPG, HEIC/HEIF, PNG, MOV, and MP4 assignment shapes. It passes typed
+assignments to ExifTool in their plan order, starts the absolute executable
+directly without a shell, and uses `-overwrite_original` so ExifTool does not
+leave backup files.
+
+This writer and the JPEG GPS writer share one internal staging-write helper for
+path safety, whole-file hash verification, collision checks, and bounded
+ExifTool execution. Each public writer still validates its own typed plan,
+builds its ordered assignment arguments, and maps the internal outcome to its
+existing public result types.
+
+Before writing, the service joins all three retained results to the same media,
+requires the temporary copy to remain a regular non-linked file below the output
+root, recalculates its byte count and whole-file SHA-256, and fails if the final
+destination exists. The configurable default timeout is ten minutes for large
+videos; process-tree termination and output capture are bounded.
+
+A zero ExifTool exit returns `PendingVerification`. It neither proves that the
+requested fields were stored nor that `ImageDataHash` stayed unchanged. This
+stage never opens the Takeout source, publishes or renames the temporary copy,
+or integrates with the CLI. A later format-aware verifier must read the fields
+back and compare the post-write media hash with the retained baseline before a
+separate publisher can make the file final. Portable path checks reduce but do
+not eliminate replacement races during process access.
 
 ## JPEG GPS write verification
 
