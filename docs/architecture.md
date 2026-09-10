@@ -357,6 +357,32 @@ failures return `1`. Unused JSON candidates and `Other` files remain summary
 counts but do not affect the exit code. The command finishes completed runs with
 an explicit read-only confirmation and does not create saved reports.
 
+## Pure Amazon capture-time write planning
+
+Controlled Amazon Photos tests found that JPEG, HEIC, and PNG use EXIF
+`DateTimeOriginal`, MOV uses QuickTime `CreateDate`, and MP4 prefers Keys
+`CreationDate`. Amazon displayed these timestamp fields literally and ignored
+their timezone offsets. For a uniquely matched Takeout sidecar, Google
+`photoTakenTime` is therefore treated as the authoritative instant, converted to
+UTC at whole-second precision, and formatted for the applicable Amazon-facing
+tag. Image plans also set EXIF `OffsetTimeOriginal` to `+00:00`; MP4 Keys values
+include `+00:00` in the date string.
+
+`AmazonCaptureTimeWritePlanBuilder` is a pure format-aware policy layer over one
+`TakeoutMetadataPlanningItem`. A ready result retains the original item, UTC
+instant, media format, ordered typed assignments, matched sidecar entry, and
+match rule. This policy intentionally uses a matched `photoTakenTime` even when
+existing embedded values differ, so matched files share one chronological
+basis. Without that sidecar value, a trustworthy embedded capture-time decision
+is retained without a write; sidecar `creationTime` never authorizes one.
+
+Invalid or ambiguous sidecars and items without a usable capture time require
+attention. JPEG/JPG, HEIC/HEIF, PNG, MOV, and MP4 are supported using
+case-insensitive extensions. Other extensions receive an unsupported planning
+result that does not claim Amazon incompatibility. The builder does not access
+the filesystem, run ExifTool, change the existing reader decisions, write
+metadata, or integrate with preparation or the CLI.
+
 ## Destination path planning
 
 Core can create a pure destination-path plan from absolute Takeout and output
