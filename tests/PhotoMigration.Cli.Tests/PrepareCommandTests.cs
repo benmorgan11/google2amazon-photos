@@ -257,7 +257,14 @@ public sealed class PrepareCommandTests
                 media=''
                 for argument in "$@"; do media="$argument"; done
                 printf 'read:%s\n' "$media" >> '{{_callLogPath}}'
-                printf '%s' '[{}]'
+                case "$media" in
+                  *.mov|*.MOV|*.mp4|*.MP4)
+                    printf '%s' '[{"QuickTime:CreateDate":"2020:01:02 03:04:05"}]'
+                    ;;
+                  *)
+                    printf '%s' '[{"ExifIFD:DateTimeOriginal":"2020:01:02 03:04:05"}]'
+                    ;;
+                esac
                 """;
             File.WriteAllText(executablePath, script, new UTF8Encoding(false));
             if (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())

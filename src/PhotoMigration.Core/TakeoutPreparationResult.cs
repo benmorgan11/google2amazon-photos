@@ -3,7 +3,10 @@ namespace PhotoMigration.Core;
 public enum TakeoutPreparationOutcomeKind
 {
     PublishedUnchanged,
-    PublishedJpegGps,
+    PublishedWithGps,
+    PublishedJpegGps = PublishedWithGps,
+    PublishedWithCaptureTime,
+    PublishedWithGpsAndCaptureTime,
     AttentionRequired,
     Failed
 }
@@ -16,7 +19,8 @@ public enum TakeoutPreparationAttentionReason
     EmbeddedMetadataUnavailable,
     EmbeddedFormatNotSupported,
     WriteFormatNotSupported,
-    JpegWriteReviewRequired
+    JpegWriteReviewRequired,
+    CaptureTimeAttentionRequired
 }
 
 public enum TakeoutPreparationFailureStage
@@ -27,6 +31,8 @@ public enum TakeoutPreparationFailureStage
     JpegWritePlanning,
     JpegWriting,
     JpegVerification,
+    CaptureTimeWriting,
+    CaptureTimeVerification,
     Publication
 }
 
@@ -51,8 +57,12 @@ public sealed class TakeoutPreparationResult
         Outcomes = outcomes;
         PublishedUnchangedFiles = ForKind(
             TakeoutPreparationOutcomeKind.PublishedUnchanged);
-        PublishedJpegGpsFiles = ForKind(
-            TakeoutPreparationOutcomeKind.PublishedJpegGps);
+        PublishedWithGpsFiles = ForKind(
+            TakeoutPreparationOutcomeKind.PublishedWithGps);
+        PublishedWithCaptureTimeFiles = ForKind(
+            TakeoutPreparationOutcomeKind.PublishedWithCaptureTime);
+        PublishedWithGpsAndCaptureTimeFiles = ForKind(
+            TakeoutPreparationOutcomeKind.PublishedWithGpsAndCaptureTime);
         AttentionRequiredFiles = ForKind(
             TakeoutPreparationOutcomeKind.AttentionRequired);
         FailedFiles = ForKind(TakeoutPreparationOutcomeKind.Failed);
@@ -69,7 +79,16 @@ public sealed class TakeoutPreparationResult
 
     public IReadOnlyList<TakeoutPreparationItemOutcome> PublishedUnchangedFiles { get; }
 
-    public IReadOnlyList<TakeoutPreparationItemOutcome> PublishedJpegGpsFiles { get; }
+    public IReadOnlyList<TakeoutPreparationItemOutcome> PublishedWithGpsFiles { get; }
+
+    public IReadOnlyList<TakeoutPreparationItemOutcome> PublishedJpegGpsFiles =>
+        PublishedWithGpsFiles;
+
+    public IReadOnlyList<TakeoutPreparationItemOutcome>
+        PublishedWithCaptureTimeFiles { get; }
+
+    public IReadOnlyList<TakeoutPreparationItemOutcome>
+        PublishedWithGpsAndCaptureTimeFiles { get; }
 
     public IReadOnlyList<TakeoutPreparationItemOutcome> AttentionRequiredFiles { get; }
 
@@ -79,10 +98,21 @@ public sealed class TakeoutPreparationResult
 
     public int PublishedUnchangedCount => PublishedUnchangedFiles.Count;
 
-    public int PublishedJpegGpsCount => PublishedJpegGpsFiles.Count;
+    public int PublishedWithGpsCount => PublishedWithGpsFiles.Count;
+
+    public int PublishedJpegGpsCount => PublishedWithGpsCount;
+
+    public int PublishedWithCaptureTimeCount =>
+        PublishedWithCaptureTimeFiles.Count;
+
+    public int PublishedWithGpsAndCaptureTimeCount =>
+        PublishedWithGpsAndCaptureTimeFiles.Count;
 
     public int PublishedCount =>
-        PublishedUnchangedCount + PublishedJpegGpsCount;
+        PublishedUnchangedCount
+        + PublishedWithGpsCount
+        + PublishedWithCaptureTimeCount
+        + PublishedWithGpsAndCaptureTimeCount;
 
     public int AttentionRequiredCount => AttentionRequiredFiles.Count;
 

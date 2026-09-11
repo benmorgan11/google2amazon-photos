@@ -1,29 +1,18 @@
 namespace PhotoMigration.Core;
 
-public static class VerifiedJpegPublisher
+public static class VerifiedAmazonCaptureTimePublisher
 {
-    public static VerifiedJpegPublicationResult Publish(
+    public static VerifiedAmazonCaptureTimePublicationResult Publish(
         string outputRootPath,
-        JpegGpsMetadataWriteVerifiedResult verifiedResult) =>
-        Publish(
-            outputRootPath,
-            verifiedResult,
-            (temporaryPath, finalPath) =>
-                File.Move(temporaryPath, finalPath, overwrite: false));
-
-    internal static VerifiedJpegPublicationResult Publish(
-        string outputRootPath,
-        JpegGpsMetadataWriteVerifiedResult verifiedResult,
-        Action<string, string> moveFile)
+        AmazonCaptureTimeMetadataWriteVerifiedResult verifiedResult)
     {
         ArgumentNullException.ThrowIfNull(verifiedResult);
-        ArgumentNullException.ThrowIfNull(moveFile);
 
         if (!RetainedPathsMatch(verifiedResult))
         {
             return Failure(
                 verifiedResult,
-                VerifiedJpegPublicationFailureKind.MismatchedPaths,
+                VerifiedAmazonCaptureTimePublicationFailureKind.MismatchedPaths,
                 "The verification, write, staging, and destination paths do not match.");
         }
 
@@ -31,9 +20,10 @@ public static class VerifiedJpegPublisher
             outputRootPath,
             verifiedResult.TemporaryCopyPath,
             verifiedResult.IntendedFinalDestinationPath,
-            moveFile);
+            (temporaryPath, finalPath) =>
+                File.Move(temporaryPath, finalPath, overwrite: false));
         return outcome.Succeeded
-            ? new VerifiedJpegPublicationSuccessResult(
+            ? new VerifiedAmazonCaptureTimePublicationSuccessResult(
                 verifiedResult,
                 outcome.TemporaryPath,
                 outcome.FinalPath,
@@ -45,11 +35,13 @@ public static class VerifiedJpegPublisher
     }
 
     private static bool RetainedPathsMatch(
-        JpegGpsMetadataWriteVerifiedResult verifiedResult)
+        AmazonCaptureTimeMetadataWriteVerifiedResult verifiedResult)
     {
         var writeResult = verifiedResult.WriteResult;
-        var stagingResult = writeResult.WritePlan.StagingResult;
-        return StringComparer.Ordinal.Equals(
+        var stagingResult = writeResult.StagingResult;
+        var baselineResult = writeResult.BaselineHashResult;
+        return ReferenceEquals(baselineResult.StagingResult, stagingResult)
+               && StringComparer.Ordinal.Equals(
                    verifiedResult.TemporaryCopyPath,
                    writeResult.TemporaryCopyPath)
                && StringComparer.Ordinal.Equals(
@@ -57,7 +49,7 @@ public static class VerifiedJpegPublisher
                    stagingResult.TemporaryCopyPath)
                && StringComparer.Ordinal.Equals(
                    verifiedResult.TemporaryCopyPath,
-                   writeResult.WritePlan.BaselineHashResult.TemporaryCopyPath)
+                   baselineResult.TemporaryCopyPath)
                && StringComparer.Ordinal.Equals(
                    verifiedResult.IntendedFinalDestinationPath,
                    writeResult.IntendedFinalDestinationPath)
@@ -69,29 +61,29 @@ public static class VerifiedJpegPublisher
                    stagingResult.PlanningItem.AbsoluteDestinationPath);
     }
 
-    private static VerifiedJpegPublicationFailureKind MapFailureKind(
+    private static VerifiedAmazonCaptureTimePublicationFailureKind MapFailureKind(
         VerifiedMetadataFilePublicationFailureKind kind) => kind switch
         {
             VerifiedMetadataFilePublicationFailureKind.InvalidOutputRoot =>
-                VerifiedJpegPublicationFailureKind.InvalidOutputRoot,
+                VerifiedAmazonCaptureTimePublicationFailureKind.InvalidOutputRoot,
             VerifiedMetadataFilePublicationFailureKind.InvalidPath =>
-                VerifiedJpegPublicationFailureKind.InvalidPath,
+                VerifiedAmazonCaptureTimePublicationFailureKind.InvalidPath,
             VerifiedMetadataFilePublicationFailureKind.MissingTemporaryFile =>
-                VerifiedJpegPublicationFailureKind.MissingTemporaryFile,
+                VerifiedAmazonCaptureTimePublicationFailureKind.MissingTemporaryFile,
             VerifiedMetadataFilePublicationFailureKind.LinkedPath =>
-                VerifiedJpegPublicationFailureKind.LinkedPath,
+                VerifiedAmazonCaptureTimePublicationFailureKind.LinkedPath,
             VerifiedMetadataFilePublicationFailureKind.NonRegularTemporaryFile =>
-                VerifiedJpegPublicationFailureKind.NonRegularTemporaryFile,
+                VerifiedAmazonCaptureTimePublicationFailureKind.NonRegularTemporaryFile,
             VerifiedMetadataFilePublicationFailureKind.ExistingDestination =>
-                VerifiedJpegPublicationFailureKind.ExistingDestination,
+                VerifiedAmazonCaptureTimePublicationFailureKind.ExistingDestination,
             VerifiedMetadataFilePublicationFailureKind.MoveFailure =>
-                VerifiedJpegPublicationFailureKind.MoveFailure,
+                VerifiedAmazonCaptureTimePublicationFailureKind.MoveFailure,
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
 
-    private static VerifiedJpegPublicationFailureResult Failure(
-        JpegGpsMetadataWriteVerifiedResult verifiedResult,
-        VerifiedJpegPublicationFailureKind kind,
+    private static VerifiedAmazonCaptureTimePublicationFailureResult Failure(
+        AmazonCaptureTimeMetadataWriteVerifiedResult verifiedResult,
+        VerifiedAmazonCaptureTimePublicationFailureKind kind,
         string message) =>
         new(
             verifiedResult,

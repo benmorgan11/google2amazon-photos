@@ -11,6 +11,66 @@ public static class AmazonCaptureTimeMetadataWriter
         string outputRootPath,
         string exifToolExecutablePath,
         TimeSpan? timeout = null)
+        => ExecuteCore(
+            writePlan,
+            stagingResult,
+            baselineHashResult,
+            outputRootPath,
+            exifToolExecutablePath,
+            [],
+            timeout);
+
+    internal static AmazonCaptureTimeMetadataWriteResult ExecuteCombined(
+        AmazonCaptureTimeWriteReadyResult writePlan,
+        JpegMetadataWriteReadyResult gpsWritePlan,
+        VerifiedMediaFileStagingSuccessResult stagingResult,
+        ImageDataHashReadSuccessResult baselineHashResult,
+        string outputRootPath,
+        string exifToolExecutablePath,
+        TimeSpan? timeout = null)
+    {
+        ArgumentNullException.ThrowIfNull(writePlan);
+        ArgumentNullException.ThrowIfNull(gpsWritePlan);
+        ArgumentNullException.ThrowIfNull(stagingResult);
+        ArgumentNullException.ThrowIfNull(baselineHashResult);
+
+        if (!ReferenceEquals(gpsWritePlan.StagingResult, stagingResult)
+            || !ReferenceEquals(gpsWritePlan.BaselineHashResult, baselineHashResult)
+            || !ReferenceEquals(
+                gpsWritePlan.TakeoutPlanningItem.MediaEntry,
+                writePlan.PlanningItem.MediaEntry)
+            || JpegGpsMetadataWriter.ValidatePlanJoin(gpsWritePlan) is not null
+            || JpegGpsMetadataWriter.ValidateAssignments(gpsWritePlan) is not null)
+        {
+            return Failure(
+                writePlan,
+                stagingResult,
+                baselineHashResult,
+                outputRootPath,
+                exifToolExecutablePath,
+                AmazonCaptureTimeMetadataWriteFailureKind.InvalidWritePlan,
+                "The combined GPS and capture-time plans do not retain one " +
+                "valid staged JPEG pipeline.");
+        }
+
+        return ExecuteCore(
+            writePlan,
+            stagingResult,
+            baselineHashResult,
+            outputRootPath,
+            exifToolExecutablePath,
+            JpegGpsMetadataWriter.CreateAssignmentArguments(gpsWritePlan),
+            timeout);
+    }
+
+    private static AmazonCaptureTimeMetadataWriteResult ExecuteCore(
+        AmazonCaptureTimeWriteReadyResult writePlan,
+        VerifiedMediaFileStagingSuccessResult stagingResult,
+        ImageDataHashReadSuccessResult baselineHashResult,
+        string outputRootPath,
+        string exifToolExecutablePath,
+        IReadOnlyList<string> leadingAssignmentArguments,
+        TimeSpan? timeout)
     {
         ArgumentNullException.ThrowIfNull(writePlan);
         ArgumentNullException.ThrowIfNull(stagingResult);
@@ -94,7 +154,9 @@ public static class AmazonCaptureTimeMetadataWriter
             outputRoot,
             stagingResult,
             exifToolPath,
-            CreateAssignmentArguments(writePlan),
+            leadingAssignmentArguments
+                .Concat(CreateAssignmentArguments(writePlan))
+                .ToArray(),
             writeTimeout,
             "capture-time metadata write");
         return MapOutcome(
