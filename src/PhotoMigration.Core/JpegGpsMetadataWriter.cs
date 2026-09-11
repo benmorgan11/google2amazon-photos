@@ -80,7 +80,7 @@ public static class JpegGpsMetadataWriter
         return MapOutcome(writePlan, exifToolPath, outcome);
     }
 
-    private static JpegGpsMetadataWriteFailureResult? ValidatePlanJoin(
+    internal static JpegGpsMetadataWriteFailureResult? ValidatePlanJoin(
         JpegMetadataWriteReadyResult writePlan)
     {
         var staging = writePlan.StagingResult;
@@ -99,7 +99,7 @@ public static class JpegGpsMetadataWriter
             : null;
     }
 
-    private static JpegGpsMetadataWriteFailureResult? ValidateAssignments(
+    internal static JpegGpsMetadataWriteFailureResult? ValidateAssignments(
         JpegMetadataWriteReadyResult writePlan)
     {
         var assignments = writePlan.Assignments;
@@ -135,7 +135,7 @@ public static class JpegGpsMetadataWriter
             : null;
     }
 
-    private static IReadOnlyList<string> CreateAssignmentArguments(
+    internal static IReadOnlyList<string> CreateAssignmentArguments(
         JpegMetadataWriteReadyResult writePlan)
     {
         var arguments = new List<string>

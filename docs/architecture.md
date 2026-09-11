@@ -662,24 +662,26 @@ filesystem changes, malformed or missing values, GPS or media-hash mismatches,
 tool errors, and bounded timeouts. Verification does not publish, rename, move,
 delete, repair, or otherwise modify any file.
 
-## Verified JPEG publication
+## Verified metadata publication
 
-Core can publish one successfully verified JPEG GPS result by moving its staged
-temporary file to the retained final destination. Before moving, the publisher
-requires an existing absolute output root that is a non-linked directory. The
-temporary and final paths must match the retained staging, writing, and
-verification results, remain strictly below the output root, and share one
-directory. Every existing component below the root is checked for symbolic
-links or reparse points, the temporary path must remain a regular non-linked
-file, and the final destination must remain absent.
+Core can publish successfully verified JPEG GPS or Amazon capture-time results
+by moving the staged temporary file to the retained final destination. Both
+typed publishers use the same small internal path-and-move helper. Before
+moving, it requires an existing absolute output root that is a non-linked
+directory. The temporary and final paths must match the retained staging,
+writing, and verification results, remain strictly below the output root, and
+share one directory. Every existing component below the root is checked for
+symbolic links or reparse points, the temporary path must remain a regular
+non-linked file, and the final destination must remain absent.
 
 Publication uses `File.Move` with overwrite disabled. Because staging placed the
 temporary file beside its final destination, this is a same-directory move and
 does not copy or re-encode the verified bytes. Success retains the complete
 verification result, former temporary path, final path, and byte count recorded
-immediately before publication. Validation and move failures retain the same
-paths and do not delete, repair, copy, or deliberately move the temporary file.
-The original Takeout source is never accessed.
+immediately before publication. Capture-time publication supports every format
+accepted by its verified write plan. Validation and move failures retain the
+same paths and do not delete, repair, copy, or deliberately move the temporary
+file. The original Takeout source is never accessed.
 
 Portable filesystem APIs cannot make the validation checks and move one atomic
 operation. A competing process may still create the destination or replace a
@@ -719,20 +721,32 @@ retains the original metadata planning and analysis results, the destination
 planning result, categorized outcome lists, and derived publication, attention,
 and failure counts.
 
-Items with no proposed metadata change are staged and passed directly to the
-verified unchanged-media publisher. Unmatched sidecars do not block this path.
-Safe metadata changes use the existing staged JPEG pipeline without duplicating
-its decisions: baseline `ImageDataHash`, JPEG write planning, GPS writing,
-post-write verification, and verified JPEG publication. The service adds no
-format-specific writer beyond the existing JPEG implementation.
+Every item receives an Amazon capture-time write plan. A matched, valid
+`photoTakenTime` is written as the format-specific UTC value for JPEG/JPG,
+HEIC/HEIF, PNG, MOV, or MP4. The service stages the media, reads a baseline
+`ImageDataHash`, performs the approved write, verifies both the exact timestamp
+values and unchanged media-data hash, and publishes with a non-overwriting
+same-directory move. Sidecar `creationTime` is never selected automatically.
+
+Items with a trustworthy embedded capture time and no proposed metadata change
+still use the verified unchanged-media publisher. GPS-only JPEGs retain the
+existing staged write, verification, and publication path. When a JPEG needs
+both GPS and UTC capture-time restoration, the ordered assignment sets are sent
+in one ExifTool write to the same staged copy; capture-time and GPS are then both
+verified against the original baseline hash before one publication. An
+authoritative matched `photoTakenTime` resolves capture-time conflicts, while
+unrelated metadata or location reviews continue to require attention so a file
+is never published with only part of its safely proposed metadata applied.
 
 Review-required or unavailable metadata, unsupported readers or writers, and
 invalid or ambiguous sidecars remain attention outcomes and are not published.
-Operational failures retain the exact existing stage result and identify the
-failed stage. Processing continues after per-file attention or failure; already
+Operational failures retain the exact stage result and identify capture-time
+writing and verification separately from the existing GPS stages. Outcomes and
+counts distinguish unchanged, GPS-only, capture-time-only, and combined
+publication. Processing continues after per-file attention or failure; already
 published files are not rolled back, and downstream diagnostic temporary files
-are not deleted. Preparation is intentionally single-threaded and adds no CLI,
-progress reporting, or batch recovery policy.
+are not deleted. Preparation remains intentionally single-threaded and adds no
+new CLI presentation, progress reporting, or batch recovery policy.
 
 ## Preparation command
 

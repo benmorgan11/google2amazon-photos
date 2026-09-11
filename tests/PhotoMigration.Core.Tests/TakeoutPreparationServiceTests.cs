@@ -93,6 +93,215 @@ public sealed class TakeoutPreparationServiceTests
     }
 
     [Fact]
+    public void Prepare_PublishesCaptureTimeOnlyImageAndVideo()
+    {
+        if (!SupportsPosixScripts()) return;
+
+        using var fixture = new PreparationFixture();
+        fixture.WriteTakeout("Images/photo.png", [1, 2, 3]);
+        fixture.WriteTakeoutText(
+            "Images/photo.png.json",
+            PhotoTakenTimeSidecar());
+        fixture.WriteTakeout("Videos/movie.mov", [4, 5, 6, 7]);
+        fixture.WriteTakeoutText(
+            "Videos/movie.mov.json",
+            PhotoTakenTimeSidecar());
+        var before = fixture.SnapshotTakeout();
+
+        var result = TakeoutPreparationService.Prepare(
+            fixture.SourceRoot,
+            fixture.OutputRoot,
+            fixture.CreateExifTool());
+
+        Assert.All(result.Outcomes, outcome =>
+        {
+            Assert.Equal(
+                TakeoutPreparationOutcomeKind.PublishedWithCaptureTime,
+                outcome.Kind);
+            var publication = Assert.IsType<
+                VerifiedAmazonCaptureTimePublicationSuccessResult>(
+                outcome.RetainedResult);
+            Assert.Equal(MediaHash,
+                publication.VerificationResult.ActualImageDataHashSha256);
+            Assert.Equal(
+                publication.VerificationResult.ExpectedAssignments,
+                publication.VerificationResult.ActualAssignments);
+        });
+        Assert.Equal(2, result.PublishedWithCaptureTimeCount);
+        Assert.Equal(2, result.PublishedCount);
+        Assert.Equal([1, 2, 3], fixture.ReadOutput("Images/photo.png"));
+        Assert.Equal([4, 5, 6, 7], fixture.ReadOutput("Videos/movie.mov"));
+        Assert.Empty(fixture.FindStagingFiles());
+        fixture.AssertTakeoutUnchanged(before);
+    }
+
+    [Fact]
+    public void Prepare_PublishesPngCaptureTimeWhenSidecarLocationIsZeroPlaceholder()
+    {
+        if (!SupportsPosixScripts()) return;
+
+        using var fixture = new PreparationFixture();
+        fixture.WriteTakeout("photo.png", [1, 2, 3]);
+        fixture.WriteTakeoutText(
+            "photo.png.json",
+            $$"""
+            {
+              "photoTakenTime": { "timestamp": "1600000000" },
+              "geoData": { "latitude": 0, "longitude": 0, "altitude": 42 }
+            }
+            """);
+        var before = fixture.SnapshotTakeout();
+
+        var result = TakeoutPreparationService.Prepare(
+            fixture.SourceRoot,
+            fixture.OutputRoot,
+            fixture.CreateExifTool());
+
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal(
+            TakeoutPreparationOutcomeKind.PublishedWithCaptureTime,
+            outcome.Kind);
+        var publication = Assert.IsType<
+            VerifiedAmazonCaptureTimePublicationSuccessResult>(
+            outcome.RetainedResult);
+        Assert.Equal(
+            publication.VerificationResult.ExpectedAssignments,
+            publication.VerificationResult.ActualAssignments);
+        Assert.Equal(MediaHash,
+            publication.VerificationResult.ActualImageDataHashSha256);
+        Assert.Equal([1, 2, 3], fixture.ReadOutput("photo.png"));
+        Assert.Equal(1, result.PublishedWithCaptureTimeCount);
+        Assert.Equal(0, result.AttentionRequiredCount);
+        fixture.AssertTakeoutUnchanged(before);
+    }
+
+    [Fact]
+    public void Prepare_WritesAndVerifiesJpegGpsAndCaptureTimeBeforeOnePublish()
+    {
+        if (!SupportsPosixScripts()) return;
+
+        using var fixture = new PreparationFixture();
+        fixture.WriteTakeout("Album/photo.jpg", [1, 2, 3, 4]);
+        fixture.WriteTakeoutText(
+            "Album/photo.jpg.json",
+            $$"""
+            {
+              "photoTakenTime": { "timestamp": "1600000000" },
+              "geoData": { "latitude": 1, "longitude": 2, "altitude": 3 }
+            }
+            """);
+        var before = fixture.SnapshotTakeout();
+
+        var result = TakeoutPreparationService.Prepare(
+            fixture.SourceRoot,
+            fixture.OutputRoot,
+            fixture.CreateExifTool());
+
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal(
+            TakeoutPreparationOutcomeKind.PublishedWithGpsAndCaptureTime,
+            outcome.Kind);
+        var combined = Assert.IsType<
+            VerifiedJpegGpsAndCaptureTimePublicationResult>(outcome.RetainedResult);
+        Assert.Equal(MediaHash,
+            combined.CaptureTimePublication.VerificationResult
+                .ActualImageDataHashSha256);
+        Assert.Equal(MediaHash,
+            combined.GpsVerification.ActualImageDataHashSha256);
+        Assert.Equal(
+            new JpegGpsMetadataVerificationValues(1, "N", 2, "E", 3, "0"),
+            combined.GpsVerification.ActualGps);
+        Assert.Equal(1, result.PublishedWithGpsAndCaptureTimeCount);
+        Assert.Equal(1, result.PublishedCount);
+        Assert.Equal([1, 2, 3, 4], fixture.ReadOutput("Album/photo.jpg"));
+        Assert.Single(
+            fixture.ReadExifToolCalls(),
+            call => call.StartsWith("-overwrite_original|", StringComparison.Ordinal)
+                    && call.EndsWith("|1|1", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            Directory.EnumerateFiles(fixture.OutputRoot, "*", SearchOption.AllDirectories),
+            path => path.EndsWith("_original", StringComparison.Ordinal));
+        fixture.AssertTakeoutUnchanged(before);
+    }
+
+    [Fact]
+    public void Prepare_VerificationFailurePreventsPublishAndDoesNotStopLaterFile()
+    {
+        if (!SupportsPosixScripts()) return;
+
+        using var fixture = new PreparationFixture();
+        fixture.WriteTakeout("A-capture.mp4", [1, 2, 3]);
+        fixture.WriteTakeoutText(
+            "A-capture.mp4.json",
+            PhotoTakenTimeSidecar());
+        fixture.WriteTakeout("z-later.jpg", [9, 8, 7]);
+        var before = fixture.SnapshotTakeout();
+
+        var result = TakeoutPreparationService.Prepare(
+            fixture.SourceRoot,
+            fixture.OutputRoot,
+            fixture.CreateExifTool(mismatchCaptureTime: true));
+
+        Assert.Collection(
+            result.Outcomes,
+            failed =>
+            {
+                Assert.Equal(TakeoutPreparationOutcomeKind.Failed, failed.Kind);
+                Assert.Equal(TakeoutPreparationFailureStage.CaptureTimeVerification,
+                    failed.FailureStage);
+                var verification = Assert.IsType<
+                    AmazonCaptureTimeMetadataWriteVerificationFailureResult>(
+                    failed.RetainedResult);
+                Assert.Equal(
+                    AmazonCaptureTimeMetadataWriteVerificationFailureKind
+                        .CaptureTimeMismatch,
+                    verification.FailureKind);
+            },
+            published => Assert.Equal(
+                TakeoutPreparationOutcomeKind.PublishedUnchanged,
+                published.Kind));
+        Assert.False(fixture.OutputExists("A-capture.mp4"));
+        Assert.True(fixture.OutputExists("z-later.jpg"));
+        Assert.Equal(1, result.FailedCount);
+        Assert.Equal(1, result.PublishedCount);
+        fixture.AssertTakeoutUnchanged(before);
+    }
+
+    [Fact]
+    public void Prepare_UnresolvedLocationReviewPreventsPartialCapturePublication()
+    {
+        if (!SupportsPosixScripts()) return;
+
+        using var fixture = new PreparationFixture();
+        fixture.WriteTakeout("photo.jpg", [1, 2, 3]);
+        fixture.WriteTakeoutText(
+            "photo.jpg.json",
+            $$"""
+            {
+              "photoTakenTime": { "timestamp": "1600000000" },
+              "geoData": { "latitude": 1, "longitude": 2 }
+            }
+            """);
+        var before = fixture.SnapshotTakeout();
+
+        var result = TakeoutPreparationService.Prepare(
+            fixture.SourceRoot,
+            fixture.OutputRoot,
+            fixture.CreateExifTool(conflictingEmbeddedGps: true));
+
+        var outcome = Assert.Single(result.Outcomes);
+        Assert.Equal(TakeoutPreparationOutcomeKind.AttentionRequired, outcome.Kind);
+        Assert.Equal(TakeoutPreparationAttentionReason.MetadataReviewRequired,
+            outcome.AttentionReason);
+        Assert.False(fixture.OutputExists("photo.jpg"));
+        Assert.Empty(fixture.FindStagingFiles());
+        Assert.DoesNotContain(
+            fixture.ReadExifToolCalls(),
+            call => call.StartsWith("-overwrite_original|", StringComparison.Ordinal));
+        fixture.AssertTakeoutUnchanged(before);
+    }
+
+    [Fact]
     public void Prepare_AttentionAndUnsupportedWritesDoNotStopLaterSafeFile()
     {
         if (!SupportsPosixScripts()) return;
@@ -194,6 +403,9 @@ public sealed class TakeoutPreparationServiceTests
     private static bool SupportsPosixScripts() =>
         OperatingSystem.IsMacOS() || OperatingSystem.IsLinux();
 
+    private static string PhotoTakenTimeSidecar() =>
+        "{ \"photoTakenTime\": { \"timestamp\": \"1600000000\" } }";
+
     private sealed class PreparationFixture : IDisposable
     {
         private readonly string _callLogPath;
@@ -258,23 +470,46 @@ public sealed class TakeoutPreparationServiceTests
                 ? File.ReadAllLines(_callLogPath)
                 : Array.Empty<string>();
 
-        public string CreateExifTool()
+        public string CreateExifTool(
+            bool mismatchCaptureTime = false,
+            bool conflictingEmbeddedGps = false)
         {
             if (!SupportsPosixScripts()) throw new PlatformNotSupportedException();
 
             var path = Path.Combine(RootPath, "tools with spaces", "fake exiftool");
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var captureDateTime = mismatchCaptureTime
+                ? "1999:01:01 00:00:00"
+                : "2020:09:13 12:26:40";
+            var mp4CaptureDateTime = captureDateTime + "+00:00";
+            var imageMetadataJson = conflictingEmbeddedGps
+                ? "[{\"ExifIFD:DateTimeOriginal\":\"2020:01:02 03:04:05\"," +
+                  "\"GPS:GPSLatitude\":40,\"GPS:GPSLatitudeRef\":\"N\"," +
+                  "\"GPS:GPSLongitude\":70,\"GPS:GPSLongitudeRef\":\"W\"}]"
+                : "[{\"ExifIFD:DateTimeOriginal\":\"2020:01:02 03:04:05\"}]";
             var script = $$"""
                 #!/bin/sh
                 last=''
                 has_hash=0
                 has_exif_gps=0
+                has_exif_time=0
+                has_mov_time=0
+                has_mp4_time=0
+                writes_gps=0
+                writes_capture=0
                 for argument in "$@"; do
                   last="$argument"
                   if [ "$argument" = "-ImageDataHash" ]; then has_hash=1; fi
                   if [ "$argument" = "-EXIF:GPSLatitude#" ]; then has_exif_gps=1; fi
+                  if [ "$argument" = "-EXIF:DateTimeOriginal" ]; then has_exif_time=1; fi
+                  if [ "$argument" = "-QuickTime:CreateDate" ]; then has_mov_time=1; fi
+                  if [ "$argument" = "-Keys:CreationDate" ]; then has_mp4_time=1; fi
+                  case "$argument" in
+                    -EXIF:GPSLatitude=*) writes_gps=1 ;;
+                    -EXIF:DateTimeOriginal=*|-QuickTime:CreateDate=*|-Keys:CreationDate=*) writes_capture=1 ;;
+                  esac
                 done
-                printf '%s|%s\n' "$1" "$last" >> '{{_callLogPath}}'
+                printf '%s|%s|%s|%s\n' "$1" "$last" "$writes_gps" "$writes_capture" >> '{{_callLogPath}}'
                 if [ "$1" = "-overwrite_original" ]; then
                   exit 0
                 fi
@@ -282,11 +517,30 @@ public sealed class TakeoutPreparationServiceTests
                   printf '%s' '[{"GPS:GPSLatitude":1,"GPS:GPSLatitudeRef":"N","GPS:GPSLongitude":2,"GPS:GPSLongitudeRef":"E","GPS:GPSAltitude":3,"GPS:GPSAltitudeRef":0,"File:ImageDataHash":"{{MediaHash}}"}]'
                   exit 0
                 fi
+                if [ "$has_hash" -eq 1 ] && [ "$has_exif_time" -eq 1 ]; then
+                  printf '%s' '[{"ExifIFD:DateTimeOriginal":"{{captureDateTime}}","ExifIFD:OffsetTimeOriginal":"+00:00","File:ImageDataHash":"{{MediaHash}}"}]'
+                  exit 0
+                fi
+                if [ "$has_hash" -eq 1 ] && [ "$has_mov_time" -eq 1 ]; then
+                  printf '%s' '[{"QuickTime:CreateDate":"{{captureDateTime}}","File:ImageDataHash":"{{MediaHash}}"}]'
+                  exit 0
+                fi
+                if [ "$has_hash" -eq 1 ] && [ "$has_mp4_time" -eq 1 ]; then
+                  printf '%s' '[{"Keys:CreationDate":"{{mp4CaptureDateTime}}","File:ImageDataHash":"{{MediaHash}}"}]'
+                  exit 0
+                fi
                 if [ "$has_hash" -eq 1 ]; then
                   printf '%s' '[{"File:ImageDataHash":"{{MediaHash}}"}]'
                   exit 0
                 fi
-                printf '%s' '[{}]'
+                case "$last" in
+                  *.mov|*.MOV|*.mp4|*.MP4)
+                    printf '%s' '[{"QuickTime:CreateDate":"2020:01:02 03:04:05"}]'
+                    ;;
+                  *)
+                    printf '%s' '{{imageMetadataJson}}'
+                    ;;
+                esac
                 """;
             File.WriteAllText(path, script, new UTF8Encoding(false));
             if (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
