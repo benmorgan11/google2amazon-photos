@@ -305,7 +305,14 @@ public static class CliApplication
         output.WriteLine($"Total media: {result.TotalMediaCount}");
         output.WriteLine($"Published unchanged: {result.PublishedUnchangedCount}");
         output.WriteLine(
-            $"Published with verified JPEG GPS: {result.PublishedJpegGpsCount}");
+            $"Published with verified GPS: {result.PublishedWithGpsCount}");
+        output.WriteLine(
+            $"Published with verified UTC capture time: " +
+            $"{result.PublishedWithCaptureTimeCount}");
+        output.WriteLine(
+            $"Published with verified GPS and UTC capture time: " +
+            $"{result.PublishedWithGpsAndCaptureTimeCount}");
+        output.WriteLine($"Total published: {result.PublishedCount}");
         output.WriteLine($"Attention required: {result.AttentionRequiredCount}");
         output.WriteLine($"Failed: {result.FailedCount}");
         output.WriteLine(
