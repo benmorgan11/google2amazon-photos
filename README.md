@@ -110,18 +110,34 @@ For example, on macOS:
 dotnet run --project src/PhotoMigration.Cli -- prepare "/Users/alex/Downloads/Takeout/Google Photos" "/Users/alex/Pictures/Amazon Photos Ready" --exiftool "/usr/local/bin/exiftool"
 ```
 
+The completed summary separates each verified publication path:
+
+```text
+Preparation summary:
+Total media: 4
+Published unchanged: 1
+Published with verified GPS: 1
+Published with verified UTC capture time: 1
+Published with verified GPS and UTC capture time: 1
+Total published: 4
+Attention required: 0
+Failed: 0
+```
+
 Both directories must already exist and must not overlap. Always use an output
 directory separate from the Takeout export: the command never changes source
 media and never overwrites an existing output file. Files that need no metadata
-change are published byte-for-byte. The current writer can restore and verify
-GPS changes only for JPEG/JPG files. Files requiring uncertain changes or changes
-to an unsupported format remain unpublished and are listed for attention, while
-per-file operational failures are reported without stopping later files.
+change are published byte-for-byte. UTC capture-time changes are written and
+verified for JPEG/JPG, HEIC/HEIF, PNG, MOV, and MP4. GPS changes are currently
+restored and verified only for JPEG/JPG files. Files requiring uncertain changes
+or changes to an unsupported format remain unpublished and are listed for
+attention, while per-file operational failures are reported without stopping
+later files.
 
-The preparation summary counts total media, both publication paths, attention
-items, failures, unused JSON, and `Other` files. Only attention and failed media
-are listed individually. Completed runs confirm that the Takeout source was not
-changed and show the output directory.
+The preparation summary counts total media, all four publication outcomes, total
+published media, attention items, failures, unused JSON, and `Other` files. Only
+attention and failed media are listed individually. Completed runs confirm that
+the Takeout source was not changed and show the output directory.
 
 ## Privacy
 

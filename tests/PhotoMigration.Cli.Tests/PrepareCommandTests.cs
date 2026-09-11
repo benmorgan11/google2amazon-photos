@@ -5,6 +5,9 @@ namespace PhotoMigration.Cli.Tests;
 [Collection(ExternalProcessTestCollection.Name)]
 public sealed class PrepareCommandTests
 {
+    private const string MediaHash =
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
     [Fact]
     public void Prepare_WithExplicitExifToolPublishesAllMediaAndReturnsSuccess()
     {
@@ -31,7 +34,14 @@ public sealed class PrepareCommandTests
             execution.Output);
         Assert.Contains("Total media: 2", execution.Output);
         Assert.Contains("Published unchanged: 2", execution.Output);
-        Assert.Contains("Published with verified JPEG GPS: 0", execution.Output);
+        Assert.Contains("Published with verified GPS: 0", execution.Output);
+        Assert.Contains(
+            "Published with verified UTC capture time: 0",
+            execution.Output);
+        Assert.Contains(
+            "Published with verified GPS and UTC capture time: 0",
+            execution.Output);
+        Assert.Contains("Total published: 2", execution.Output);
         Assert.Contains("Attention required: 0", execution.Output);
         Assert.Contains("Failed: 0", execution.Output);
         Assert.Contains("Unused JSON: 1", execution.Output);
@@ -54,6 +64,57 @@ public sealed class PrepareCommandTests
                 $"read:{Path.Combine(fixture.SourceRoot, "z-video.mp4")}"
             ],
             fixture.ReadExifToolCalls());
+        fixture.AssertTakeoutUnchanged(sourceBefore);
+    }
+
+    [Fact]
+    public void Prepare_SummaryReportsEveryPublicationKind()
+    {
+        if (!SupportsPosixScripts()) return;
+
+        using var fixture = new PrepareFixture();
+        fixture.WriteTakeout("01-unchanged.jpg", [1]);
+        fixture.WriteTakeout("02-gps.jpg", [2]);
+        fixture.WriteTakeoutText(
+            "02-gps.jpg.json",
+            "{ \"geoData\": { \"latitude\": 1, \"longitude\": 2 } }");
+        fixture.WriteTakeout("03-capture.mov", [3]);
+        fixture.WriteTakeoutText(
+            "03-capture.mov.json",
+            PhotoTakenTimeSidecar());
+        fixture.WriteTakeout("04-both.jpg", [4]);
+        fixture.WriteTakeoutText(
+            "04-both.jpg.json",
+            $$"""
+            {
+              "photoTakenTime": { "timestamp": "1600000000" },
+              "geoData": { "latitude": 1, "longitude": 2 }
+            }
+            """);
+        var sourceBefore = fixture.SnapshotTakeout();
+
+        var execution = Run(
+            "prepare",
+            fixture.SourceRoot,
+            fixture.OutputRoot,
+            "--exiftool",
+            fixture.CreateExifTool());
+
+        Assert.Equal(0, execution.ExitCode);
+        Assert.Contains("Total media: 4", execution.Output);
+        Assert.Contains("Published unchanged: 1", execution.Output);
+        Assert.Contains("Published with verified GPS: 1", execution.Output);
+        Assert.Contains(
+            "Published with verified UTC capture time: 1",
+            execution.Output);
+        Assert.Contains(
+            "Published with verified GPS and UTC capture time: 1",
+            execution.Output);
+        Assert.Contains("Total published: 4", execution.Output);
+        Assert.Contains("Attention required: 0", execution.Output);
+        Assert.Contains("Failed: 0", execution.Output);
+        Assert.DoesNotContain("1600000000", execution.Output);
+        Assert.Empty(execution.Error);
         fixture.AssertTakeoutUnchanged(sourceBefore);
     }
 
@@ -192,6 +253,9 @@ public sealed class PrepareCommandTests
     private static bool SupportsPosixScripts() =>
         OperatingSystem.IsMacOS() || OperatingSystem.IsLinux();
 
+    private static string PhotoTakenTimeSidecar() =>
+        "{ \"photoTakenTime\": { \"timestamp\": \"1600000000\" } }";
+
     private sealed class PrepareFixture : IDisposable
     {
         private readonly string _callLogPath;
@@ -255,8 +319,43 @@ public sealed class PrepareCommandTests
                   exit 0
                 fi
                 media=''
-                for argument in "$@"; do media="$argument"; done
+                has_hash=0
+                has_gps=0
+                has_exif_time=0
+                has_mov_time=0
+                has_mp4_time=0
+                for argument in "$@"; do
+                  media="$argument"
+                  if [ "$argument" = "-ImageDataHash" ]; then has_hash=1; fi
+                  if [ "$argument" = "-EXIF:GPSLatitude#" ]; then has_gps=1; fi
+                  if [ "$argument" = "-EXIF:DateTimeOriginal" ]; then has_exif_time=1; fi
+                  if [ "$argument" = "-QuickTime:CreateDate" ]; then has_mov_time=1; fi
+                  if [ "$argument" = "-Keys:CreationDate" ]; then has_mp4_time=1; fi
+                done
                 printf 'read:%s\n' "$media" >> '{{_callLogPath}}'
+                if [ "$1" = "-overwrite_original" ]; then
+                  exit 0
+                fi
+                if [ "$has_hash" -eq 1 ] && [ "$has_gps" -eq 1 ]; then
+                  printf '%s' '[{"GPS:GPSLatitude":1,"GPS:GPSLatitudeRef":"N","GPS:GPSLongitude":2,"GPS:GPSLongitudeRef":"E","File:ImageDataHash":"{{MediaHash}}"}]'
+                  exit 0
+                fi
+                if [ "$has_hash" -eq 1 ] && [ "$has_exif_time" -eq 1 ]; then
+                  printf '%s' '[{"ExifIFD:DateTimeOriginal":"2020:09:13 12:26:40","ExifIFD:OffsetTimeOriginal":"+00:00","File:ImageDataHash":"{{MediaHash}}"}]'
+                  exit 0
+                fi
+                if [ "$has_hash" -eq 1 ] && [ "$has_mov_time" -eq 1 ]; then
+                  printf '%s' '[{"QuickTime:CreateDate":"2020:09:13 12:26:40","File:ImageDataHash":"{{MediaHash}}"}]'
+                  exit 0
+                fi
+                if [ "$has_hash" -eq 1 ] && [ "$has_mp4_time" -eq 1 ]; then
+                  printf '%s' '[{"Keys:CreationDate":"2020:09:13 12:26:40+00:00","File:ImageDataHash":"{{MediaHash}}"}]'
+                  exit 0
+                fi
+                if [ "$has_hash" -eq 1 ]; then
+                  printf '%s' '[{"File:ImageDataHash":"{{MediaHash}}"}]'
+                  exit 0
+                fi
                 case "$media" in
                   *.mov|*.MOV|*.mp4|*.MP4)
                     printf '%s' '[{"QuickTime:CreateDate":"2020:01:02 03:04:05"}]'
