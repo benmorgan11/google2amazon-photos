@@ -151,7 +151,7 @@ public static class EmbeddedGpsParser
             return;
         }
 
-        if (!TryParseSignedCoordinates(
+        if (!TryParseQuickTimeCoordinates(
                 sourceValue.RawValue,
                 out var latitude,
                 out var longitude,
@@ -161,8 +161,10 @@ public static class EmbeddedGpsParser
                 EmbeddedGpsParsingIssueKind.MalformedNumber,
                 sourceValue,
                 null,
-                "QuickTime GPS coordinates must contain signed latitude and longitude " +
-                "with optional signed altitude."));
+                "QuickTime GPS coordinates must use either compact signed ISO 6709-style " +
+                "decimal latitude and longitude with optional signed altitude, or " +
+                "whitespace-separated decimal latitude, longitude, and optional altitude " +
+                "values with optional signs."));
             return;
         }
 
@@ -196,7 +198,7 @@ public static class EmbeddedGpsParser
         }
     }
 
-    private static bool TryParseSignedCoordinates(
+    private static bool TryParseQuickTimeCoordinates(
         string rawValue,
         out double latitude,
         out double longitude,
@@ -211,6 +213,28 @@ public static class EmbeddedGpsParser
         {
             text = text[..^1];
         }
+
+        return TryParseCompactSignedCoordinates(
+                   text,
+                   out latitude,
+                   out longitude,
+                   out altitude)
+               || TryParseWhitespaceSeparatedCoordinates(
+                   text,
+                   out latitude,
+                   out longitude,
+                   out altitude);
+    }
+
+    private static bool TryParseCompactSignedCoordinates(
+        ReadOnlySpan<char> text,
+        out double latitude,
+        out double longitude,
+        out double? altitude)
+    {
+        latitude = default;
+        longitude = default;
+        altitude = null;
 
         var index = 0;
         if (!TryReadSignedDecimal(text, ref index, out latitude)
@@ -233,6 +257,57 @@ public static class EmbeddedGpsParser
                && double.IsFinite(latitude)
                && double.IsFinite(longitude)
                && (altitude is null || double.IsFinite(altitude.Value));
+    }
+
+    private static bool TryParseWhitespaceSeparatedCoordinates(
+        ReadOnlySpan<char> text,
+        out double latitude,
+        out double longitude,
+        out double? altitude)
+    {
+        latitude = default;
+        longitude = default;
+        altitude = null;
+
+        if (text.Length > 0 && char.IsWhiteSpace(text[^1]))
+        {
+            return false;
+        }
+
+        var components = text.ToString().Split(
+            (char[]?)null,
+            StringSplitOptions.RemoveEmptyEntries);
+        if (components.Length is not (2 or 3)
+            || !TryParseDecimalToken(components[0], out latitude)
+            || !TryParseDecimalToken(components[1], out longitude))
+        {
+            return false;
+        }
+
+        if (components.Length == 3)
+        {
+            if (!TryParseDecimalToken(components[2], out var parsedAltitude))
+            {
+                return false;
+            }
+
+            altitude = parsedAltitude;
+        }
+
+        return double.IsFinite(latitude)
+               && double.IsFinite(longitude)
+               && (altitude is null || double.IsFinite(altitude.Value));
+    }
+
+    private static bool TryParseDecimalToken(
+        string token,
+        out double value)
+    {
+        return double.TryParse(
+            token,
+            NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
+            CultureInfo.InvariantCulture,
+            out value);
     }
 
     private static bool TryReadSignedDecimal(

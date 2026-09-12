@@ -159,10 +159,12 @@ cameras, so it leaves their timezone unspecified by default.
 [ExifTool QuickTime tags](https://exiftool.org/TagNames/QuickTime.html)
 
 QuickTime location selection reads raw `GPSCoordinates` from Keys, ItemList, and
-UserData. The GPS parser accepts a conservative signed ISO 6709-style latitude
-and longitude with optional signed altitude. It retains the original combined
-value, group, and tag as provenance for every parsed component. Components from
-one combined value remain atomic when complete locations are built; different
+UserData. The GPS parser accepts either conservative compact signed ISO 6709-style
+decimal latitude and longitude with optional signed altitude, or ExifTool's
+machine-readable whitespace-separated decimal latitude, longitude, and optional
+altitude values with optional signs. It retains the original combined value,
+group, and tag as provenance for every parsed component. Components from one
+combined value remain atomic when complete locations are built; different
 combined values are not cross-paired. Malformed, non-finite, and out-of-range
 values remain typed GPS parsing issues, so a present invalid location prevents
 automatic sidecar fallback. Valid embedded `0, 0` coordinates remain valid.
@@ -212,11 +214,13 @@ using EXIF references. Every candidate keeps its source value and any reference
 used as provenance; malformed numbers, non-finite values, range failures, and
 reference problems remain typed issues in deterministic ordinal order.
 
-QuickTime `GPSCoordinates` values are parsed as atomic signed coordinate sets.
-Their latitude, longitude, and optional altitude components keep the same
-original combined value as provenance and are not mixed with components from a
-different combined value. Invalid combined values remain parsing issues rather
-than disappearing as missing metadata.
+QuickTime `GPSCoordinates` values accept conservative compact signed ISO
+6709-style decimal coordinates and ExifTool's machine-readable whitespace-
+separated decimal latitude, longitude, and optional altitude. Their latitude,
+longitude, and optional altitude components keep the same original combined
+value as provenance and are not mixed with components from a different combined
+value. Invalid combined values remain parsing issues rather than disappearing as
+missing metadata.
 
 The parser does not select a preferred location, combine coordinates, compare
 sidecar values, apply metadata precedence, run tools, or read or write files.

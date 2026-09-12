@@ -399,6 +399,49 @@ public sealed class EmbeddedGpsParserTests
     }
 
     [Theory]
+    [InlineData("12.3456 -45.6789 1100.954", 12.3456, -45.6789, 1100.954)]
+    [InlineData("23.4567 -67.8901", 23.4567, -67.8901, null)]
+    [InlineData("-34.5678 123.4567 -5.5", -34.5678, 123.4567, -5.5)]
+    [InlineData("\t 90  \n -180/ \r\n", 90, -180, null)]
+    [InlineData("0 0", 0, 0, null)]
+    public void Parse_QuickTimeWhitespaceCoordinatesPreserveCombinedSourceAndOptionalAltitude(
+        string rawValue,
+        double expectedLatitude,
+        double expectedLongitude,
+        double? expectedAltitude)
+    {
+        var source = Value(
+            EmbeddedMetadataField.GpsCoordinates,
+            "Keys",
+            "GPSCoordinates",
+            rawValue,
+            JsonValueKind.String);
+
+        var result = EmbeddedGpsParser.Parse([source]);
+
+        Assert.Equal(expectedAltitude is null ? 2 : 3, result.Candidates.Count);
+        Assert.Equal(
+            [EmbeddedMetadataField.GpsLatitude, EmbeddedMetadataField.GpsLongitude],
+            result.Candidates.Take(2).Select(candidate => candidate.SemanticField));
+        AssertCandidate(result.Candidates[0], source, expectedLatitude, null);
+        AssertCandidate(result.Candidates[1], source, expectedLongitude, null);
+        if (expectedAltitude is not null)
+        {
+            var altitude = Assert.Single(
+                result.Candidates,
+                candidate => candidate.SemanticField == EmbeddedMetadataField.GpsAltitude);
+            AssertCandidate(altitude, source, expectedAltitude.Value, null);
+        }
+
+        var location = Assert.Single(
+            EmbeddedLocationBuilder.Build(result.Candidates).Candidates);
+        Assert.Equal(expectedLatitude, location.Latitude.ParsedValue);
+        Assert.Equal(expectedLongitude, location.Longitude.ParsedValue);
+        Assert.Equal(expectedAltitude, location.Altitude?.ParsedValue);
+        Assert.Empty(result.Issues);
+    }
+
+    [Theory]
     [InlineData("not coordinates", EmbeddedGpsParsingIssueKind.MalformedNumber)]
     [InlineData("+NaN-118.5/", EmbeddedGpsParsingIssueKind.NonFiniteNumber)]
     [InlineData("+91-118.5/", EmbeddedGpsParsingIssueKind.OutOfRange)]
@@ -410,6 +453,38 @@ public sealed class EmbeddedGpsParserTests
         var source = Value(
             EmbeddedMetadataField.GpsCoordinates,
             "Keys",
+            "GPSCoordinates",
+            rawValue,
+            JsonValueKind.String);
+
+        var result = EmbeddedGpsParser.Parse([source]);
+
+        Assert.Empty(result.Candidates);
+        var issue = Assert.Single(result.Issues);
+        Assert.Equal(expectedKind, issue.Kind);
+        Assert.Same(source, issue.SourceValue);
+        Assert.Null(issue.ReferenceValue);
+    }
+
+    [Theory]
+    [InlineData("12.3456", EmbeddedGpsParsingIssueKind.MalformedNumber)]
+    [InlineData("12.3456 not-a-number", EmbeddedGpsParsingIssueKind.MalformedNumber)]
+    [InlineData("12.3456 -45.6789 1100.954 1", EmbeddedGpsParsingIssueKind.MalformedNumber)]
+    [InlineData("12.3456e0 -45.6789", EmbeddedGpsParsingIssueKind.MalformedNumber)]
+    [InlineData("12.3456,-45.6789", EmbeddedGpsParsingIssueKind.MalformedNumber)]
+    [InlineData("12.3456 -45.6789+1100.954", EmbeddedGpsParsingIssueKind.MalformedNumber)]
+    [InlineData("12.3456 -45.6789, 1100.954", EmbeddedGpsParsingIssueKind.MalformedNumber)]
+    [InlineData("12.3456 NaN", EmbeddedGpsParsingIssueKind.NonFiniteNumber)]
+    [InlineData("12.3456 -Infinity", EmbeddedGpsParsingIssueKind.NonFiniteNumber)]
+    [InlineData("91 0", EmbeddedGpsParsingIssueKind.OutOfRange)]
+    [InlineData("0 -181", EmbeddedGpsParsingIssueKind.OutOfRange)]
+    public void Parse_InvalidQuickTimeWhitespaceCoordinatesBecomeTypedIssues(
+        string rawValue,
+        EmbeddedGpsParsingIssueKind expectedKind)
+    {
+        var source = Value(
+            EmbeddedMetadataField.GpsCoordinates,
+            "UserData",
             "GPSCoordinates",
             rawValue,
             JsonValueKind.String);
